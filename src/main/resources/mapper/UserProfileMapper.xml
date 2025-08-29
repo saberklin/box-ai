@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.boxai.domain.mapper.UserProfileMapper">
+    <!-- 基础结果映射 -->
+    <resultMap id="BaseResultMap" type="com.boxai.domain.entity.UserProfile">
+        <id column="id" property="id" />
+        <result column="user_id" property="userId" />
+        <result column="favorite_categories" property="favoriteCategories" />
+        <result column="total_play_count" property="totalPlayCount" />
+        <result column="total_like_count" property="totalLikeCount" />
+        <result column="total_search_count" property="totalSearchCount" />
+        <result column="active_days" property="activeDays" />
+        <result column="last_active_date" property="lastActiveDate" />
+        <result column="avg_session_duration" property="avgSessionDuration" />
+        <result column="preferred_time_slots" property="preferredTimeSlots" />
+        <result column="created_at" property="createdAt" />
+        <result column="updated_at" property="updatedAt" />
+    </resultMap>
+</mapper>

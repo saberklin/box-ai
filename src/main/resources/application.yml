@@ -1,0 +1,48 @@
+server:
+  port: 9998
+
+spring:
+  application:
+    name: box-ai
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ai-box
+    username: postgres
+    password: chenglanai
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  jackson:
+    time-zone: UTC
+    serialization:
+      write-dates-as-timestamps: false
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    cache-enabled: false
+  global-config:
+    db-config:
+      id-type: assign_id
+  mapper-locations: classpath:/mapper/*.xml
+  type-aliases-package: com.boxai.domain.entity
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  wechat:
+    appid: wx430c620b11389950
+    secret: bb1cc9e976d796a10416ad89053f7011
+  jwt:
+    secret: change-me-please
+
+logging:
+  level:
+    com.boxai: INFO
+    com.baomidou.mybatisplus: INFO
+
+

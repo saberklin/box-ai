@@ -1,0 +1,1422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>专业时间轴编辑器 - Arena风格</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', 'Segoe UI', Arial, sans-serif;
+            background: #1a1a1a;
+            color: #ffffff;
+            overflow: hidden;
+            user-select: none;
+        }
+        
+        .timeline-container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .timeline-toolbar {
+            height: 50px;
+            background: linear-gradient(135deg, #2d2d2d, #1e1e1e);
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            border-bottom: 1px solid #404040;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        
+        .toolbar-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-right: 20px;
+        }
+        
+        .toolbar-btn {
+            padding: 6px 12px;
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .toolbar-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        
+        .toolbar-btn:active {
+            transform: translateY(0);
+        }
+        
+        .toolbar-btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .toolbar-btn.danger {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+        }
+        
+        .toolbar-btn.success {
+            background: linear-gradient(135deg, #27ae60, #229954);
+        }
+        
+        .time-display {
+            font-family: 'Consolas', monospace;
+            font-size: 14px;
+            font-weight: bold;
+            color: #00ff88;
+            text-shadow: 0 0 4px rgba(0,255,136,0.3);
+        }
+        
+        .zoom-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .zoom-slider {
+            width: 80px;
+            height: 4px;
+            background: #444;
+            border-radius: 2px;
+            outline: none;
+            cursor: pointer;
+        }
+        
+        .zoom-value {
+            font-size: 11px;
+            color: #ccc;
+            min-width: 35px;
+        }
+        
+        .timeline-main {
+            flex: 1;
+            display: flex;
+            background: #1e1e1e;
+            overflow: hidden;
+        }
+        
+        .track-panel {
+            width: 150px;
+            background: linear-gradient(135deg, #2a2a2a, #1f1f1f);
+            border-right: 1px solid #404040;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .track-header {
+            height: 40px;
+            background: linear-gradient(135deg, #3a3a3a, #2d2d2d);
+            border-bottom: 1px solid #404040;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: bold;
+            color: #ccc;
+        }
+        
+        .track-item {
+            height: 80px;
+            border-bottom: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: background 0.2s ease;
+            position: relative;
+        }
+        
+        .track-item:hover {
+            background: rgba(255,255,255,0.05);
+        }
+        
+        .track-item.video {
+            background: linear-gradient(90deg, rgba(74, 144, 226, 0.1), transparent);
+        }
+        
+        .track-item.audio {
+            background: linear-gradient(90deg, rgba(92, 184, 92, 0.1), transparent);
+        }
+        
+        .track-item.light {
+            background: linear-gradient(90deg, rgba(240, 173, 78, 0.1), transparent);
+        }
+        
+        .track-label {
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        
+        .track-controls {
+            display: flex;
+            gap: 4px;
+        }
+        
+        .track-btn {
+            width: 20px;
+            height: 20px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .mute-btn {
+            background: #666;
+            color: white;
+        }
+        
+        .mute-btn.active {
+            background: #e74c3c;
+        }
+        
+        .solo-btn {
+            background: #666;
+            color: white;
+        }
+        
+        .solo-btn.active {
+            background: #f39c12;
+        }
+        
+        .timeline-content {
+            flex: 1;
+            position: relative;
+            overflow: auto;
+        }
+        
+        .timeline-ruler {
+            height: 40px;
+            background: linear-gradient(135deg, #2d2d2d, #1e1e1e);
+            border-bottom: 1px solid #404040;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .timeline-canvas-container {
+            position: relative;
+            height: calc(100% - 40px);
+        }
+        
+        .timeline-canvas {
+            display: block;
+            cursor: crosshair;
+            background: #1a1a1a;
+        }
+        
+        .playhead {
+            position: absolute;
+            top: 0;
+            width: 2px;
+            height: 100%;
+            background: #ff4444;
+            z-index: 1000;
+            cursor: ew-resize;
+            transition: none;
+        }
+        
+        .playhead::before {
+            content: '';
+            position: absolute;
+            top: -8px;
+            left: -8px;
+            width: 18px;
+            height: 18px;
+            background: #ff4444;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
+        
+        .playhead:hover::before {
+            transform: scale(1.2);
+            box-shadow: 0 4px 12px rgba(255,68,68,0.4);
+        }
+        
+        .clip {
+            position: absolute;
+            height: 70px;
+            border-radius: 6px;
+            cursor: move;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 8px;
+            font-size: 11px;
+            font-weight: 500;
+            border: 2px solid transparent;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            transition: all 0.2s ease;
+        }
+        
+        .clip:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            border-color: rgba(255,255,255,0.3);
+        }
+        
+        .clip.selected {
+            border-color: #00ff88;
+            box-shadow: 0 0 0 1px #00ff88, 0 4px 12px rgba(0,255,136,0.3);
+        }
+        
+        .clip.video {
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            top: 5px;
+        }
+        
+        .clip.audio {
+            background: linear-gradient(135deg, #5cb85c, #449d44);
+            top: 85px;
+        }
+        
+        .clip.light {
+            background: linear-gradient(135deg, #f0ad4e, #ec971f);
+            top: 165px;
+        }
+        
+        .clip-name {
+            font-weight: bold;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .clip-duration {
+            font-size: 9px;
+            opacity: 0.8;
+        }
+        
+        .clip-handles {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 8px;
+            background: rgba(255,255,255,0.2);
+            cursor: ew-resize;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        
+        .clip:hover .clip-handles {
+            opacity: 1;
+        }
+        
+        .clip-handle-left {
+            left: 0;
+            border-radius: 6px 0 0 6px;
+        }
+        
+        .clip-handle-right {
+            right: 0;
+            border-radius: 0 6px 6px 0;
+        }
+        
+        .drop-zone {
+            position: absolute;
+            top: 40px;
+            left: 0;
+            right: 0;
+            height: calc(100% - 40px);
+            border: 2px dashed transparent;
+            transition: all 0.3s ease;
+            pointer-events: none;
+        }
+        
+        .drop-zone.drag-over {
+            border-color: #00ff88;
+            background: rgba(0,255,136,0.1);
+            pointer-events: auto;
+        }
+        
+        .context-menu {
+            position: fixed;
+            background: linear-gradient(135deg, #2d2d2d, #1e1e1e);
+            border: 1px solid #404040;
+            border-radius: 6px;
+            padding: 4px 0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            z-index: 2000;
+            min-width: 120px;
+            display: none;
+        }
+        
+        .context-menu-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: background 0.2s ease;
+        }
+        
+        .context-menu-item:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        
+        .context-menu-separator {
+            height: 1px;
+            background: #404040;
+            margin: 4px 0;
+        }
+        
+        .waveform {
+            position: absolute;
+            height: 40px;
+            top: 15px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        
+        .keyframe {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: #ffff00;
+            border-radius: 50%;
+            cursor: pointer;
+            top: 34px;
+            margin-left: -6px;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            transition: transform 0.2s ease;
+        }
+        
+        .keyframe:hover {
+            transform: scale(1.3);
+            box-shadow: 0 4px 8px rgba(255,255,0,0.4);
+        }
+        
+        .selection-box {
+            position: absolute;
+            border: 1px dashed #00ff88;
+            background: rgba(0,255,136,0.1);
+            pointer-events: none;
+            z-index: 999;
+        }
+        
+        .snap-line {
+            position: absolute;
+            width: 1px;
+            height: 100%;
+            background: #ff00ff;
+            z-index: 998;
+            pointer-events: none;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="timeline-container">
+        <div class="timeline-toolbar">
+            <div class="toolbar-group">
+                <button class="toolbar-btn" id="playBtn">▶ 播放</button>
+                <button class="toolbar-btn" id="pauseBtn" disabled>⏸ 暂停</button>
+                <button class="toolbar-btn" id="stopBtn">⏹ 停止</button>
+            </div>
+            
+            <div class="toolbar-group">
+                <button class="toolbar-btn" id="cutBtn" disabled>✂ 裁剪</button>
+                <button class="toolbar-btn" id="copyBtn" disabled>📋 复制</button>
+                <button class="toolbar-btn" id="pasteBtn" disabled>📄 粘贴</button>
+                <button class="toolbar-btn danger" id="deleteBtn" disabled>🗑 删除</button>
+            </div>
+            
+            <div class="toolbar-group">
+                <button class="toolbar-btn" id="splitBtn" disabled>⚡ 分割</button>
+                <button class="toolbar-btn success" id="keyframeBtn">💡 关键帧</button>
+            </div>
+            
+            <div class="time-display" id="timeDisplay">00:00:00.000 / 00:05:00.000</div>
+            
+            <div class="zoom-control">
+                <label style="font-size: 11px; color: #ccc;">缩放:</label>
+                <input type="range" class="zoom-slider" id="zoomSlider" min="0.1" max="10" step="0.1" value="1">
+                <span class="zoom-value" id="zoomValue">100%</span>
+            </div>
+        </div>
+        
+        <div class="timeline-main">
+            <div class="track-panel">
+                <div class="track-header">轨道控制</div>
+                <div class="track-item video" data-track="video">
+                    <div class="track-label">视频轨道</div>
+                    <div class="track-controls">
+                        <button class="track-btn mute-btn" title="静音">M</button>
+                        <button class="track-btn solo-btn" title="独奏">S</button>
+                    </div>
+                </div>
+                <div class="track-item audio" data-track="audio">
+                    <div class="track-label">音频轨道</div>
+                    <div class="track-controls">
+                        <button class="track-btn mute-btn" title="静音">M</button>
+                        <button class="track-btn solo-btn" title="独奏">S</button>
+                    </div>
+                </div>
+                <div class="track-item light" data-track="light">
+                    <div class="track-label">灯光轨道</div>
+                    <div class="track-controls">
+                        <button class="track-btn mute-btn" title="静音">M</button>
+                        <button class="track-btn solo-btn" title="独奏">S</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="timeline-content">
+                <div class="timeline-ruler" id="ruler"></div>
+                <div class="timeline-canvas-container">
+                    <div class="drop-zone" id="dropZone"></div>
+                    <canvas class="timeline-canvas" id="timelineCanvas"></canvas>
+                    <div class="playhead" id="playhead"></div>
+                    <div class="selection-box" id="selectionBox"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="context-menu" id="contextMenu">
+        <div class="context-menu-item" data-action="cut">裁剪</div>
+        <div class="context-menu-item" data-action="copy">复制</div>
+        <div class="context-menu-item" data-action="paste">粘贴</div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" data-action="split">分割</div>
+        <div class="context-menu-item" data-action="duplicate">复制片段</div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" data-action="delete">删除</div>
+    </div>
+
+    <script>
+        class ProfessionalTimelineEditor {
+            constructor() {
+                this.canvas = document.getElementById('timelineCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.playhead = document.getElementById('playhead');
+                this.dropZone = document.getElementById('dropZone');
+                this.ruler = document.getElementById('ruler');
+                this.contextMenu = document.getElementById('contextMenu');
+                this.selectionBox = document.getElementById('selectionBox');
+                
+                // 时间轴配置
+                this.pixelsPerSecond = 50;
+                this.totalDuration = 300;
+                this.currentTime = 0;
+                this.isPlaying = false;
+                this.zoomFactor = 1;
+                
+                // 数据
+                this.clips = [];
+                this.keyframes = [];
+                this.clipboard = null;
+                
+                // 交互状态
+                this.selectedClips = new Set();
+                this.isDragging = false;
+                this.isResizing = false;
+                this.isPlayheadDragging = false;
+                this.isSelecting = false;
+                this.dragOffset = { x: 0, y: 0 };
+                this.resizeHandle = null;
+                this.selectionStart = { x: 0, y: 0 };
+                
+                // 对齐辅助
+                this.snapThreshold = 10;
+                this.snapLines = [];
+                
+                this.init();
+            }
+            
+            init() {
+                this.setupCanvas();
+                this.setupEventListeners();
+                this.setupDragAndDrop();
+                this.setupContextMenu();
+                this.drawRuler();
+                this.render();
+                this.startAnimationLoop();
+            }
+            
+            setupCanvas() {
+                const container = this.canvas.parentElement;
+                this.canvas.width = Math.max(1500, this.totalDuration * this.pixelsPerSecond * this.zoomFactor);
+                this.canvas.height = 240; // 3 tracks * 80px
+                this.canvas.style.width = this.canvas.width + 'px';
+                this.canvas.style.height = this.canvas.height + 'px';
+            }
+            
+            setupEventListeners() {
+                // 工具栏按钮
+                document.getElementById('playBtn').addEventListener('click', () => this.play());
+                document.getElementById('pauseBtn').addEventListener('click', () => this.pause());
+                document.getElementById('stopBtn').addEventListener('click', () => this.stop());
+                document.getElementById('cutBtn').addEventListener('click', () => this.cutSelectedClips());
+                document.getElementById('copyBtn').addEventListener('click', () => this.copySelectedClips());
+                document.getElementById('pasteBtn').addEventListener('click', () => this.pasteClips());
+                document.getElementById('deleteBtn').addEventListener('click', () => this.deleteSelectedClips());
+                document.getElementById('splitBtn').addEventListener('click', () => this.splitClipAtPlayhead());
+                document.getElementById('keyframeBtn').addEventListener('click', () => this.addKeyframe());
+                
+                // 缩放控制
+                const zoomSlider = document.getElementById('zoomSlider');
+                zoomSlider.addEventListener('input', (e) => {
+                    this.zoomFactor = parseFloat(e.target.value);
+                    document.getElementById('zoomValue').textContent = Math.round(this.zoomFactor * 100) + '%';
+                    this.setupCanvas();
+                    this.drawRuler();
+                    this.render();
+                });
+                
+                // 画布交互
+                this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
+                this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
+                this.canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
+                this.canvas.addEventListener('contextmenu', (e) => this.onContextMenu(e));
+                this.canvas.addEventListener('dblclick', (e) => this.onDoubleClick(e));
+                
+                // 播放头拖拽
+                this.playhead.addEventListener('mousedown', (e) => this.startPlayheadDrag(e));
+                
+                // 全局事件
+                document.addEventListener('mousemove', (e) => this.onGlobalMouseMove(e));
+                document.addEventListener('mouseup', (e) => this.onGlobalMouseUp(e));
+                
+                // 键盘快捷键
+                document.addEventListener('keydown', (e) => this.onKeyDown(e));
+                
+                // 轨道控制
+                document.querySelectorAll('.mute-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => this.toggleMute(e.target));
+                });
+                
+                document.querySelectorAll('.solo-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => this.toggleSolo(e.target));
+                });
+            }
+            
+            setupDragAndDrop() {
+                this.dropZone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    this.dropZone.classList.add('drag-over');
+                });
+                
+                this.dropZone.addEventListener('dragleave', () => {
+                    this.dropZone.classList.remove('drag-over');
+                });
+                
+                this.dropZone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    this.dropZone.classList.remove('drag-over');
+                    
+                    const files = Array.from(e.dataTransfer.files);
+                    const rect = this.canvas.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const time = (x / this.zoomFactor) / this.pixelsPerSecond;
+                    
+                    files.forEach((file, index) => {
+                        this.addClipFromFile(file, time + index * 0.1); // 略微错开时间避免重叠
+                    });
+                });
+            }
+            
+            setupContextMenu() {
+                document.addEventListener('click', () => {
+                    this.contextMenu.style.display = 'none';
+                });
+                
+                this.contextMenu.addEventListener('click', (e) => {
+                    const action = e.target.dataset.action;
+                    if (action) {
+                        this.handleContextMenuAction(action);
+                        this.contextMenu.style.display = 'none';
+                    }
+                });
+            }
+            
+            // 播放头拖拽
+            startPlayheadDrag(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.isPlayheadDragging = true;
+                document.body.style.cursor = 'ew-resize';
+            }
+            
+            onGlobalMouseMove(e) {
+                if (this.isPlayheadDragging) {
+                    const rect = this.canvas.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const time = Math.max(0, Math.min((x / this.zoomFactor) / this.pixelsPerSecond, this.totalDuration));
+                    this.setCurrentTime(time);
+                    this.notifyJava('timeChanged', { time: this.currentTime });
+                }
+            }
+            
+            onGlobalMouseUp(e) {
+                if (this.isPlayheadDragging) {
+                    this.isPlayheadDragging = false;
+                    document.body.style.cursor = '';
+                }
+            }
+            
+            // 鼠标事件处理
+            onMouseDown(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                // 检查是否点击在片段上
+                const clip = this.getClipAt(x, y);
+                const handle = this.getResizeHandle(clip, x, y);
+                
+                if (handle) {
+                    // 开始调整片段大小
+                    this.isResizing = true;
+                    this.resizeHandle = handle;
+                    this.selectedClips.clear();
+                    this.selectedClips.add(clip);
+                    this.canvas.style.cursor = 'ew-resize';
+                } else if (clip) {
+                    // 选择片段
+                    if (!e.ctrlKey && !e.shiftKey) {
+                        this.selectedClips.clear();
+                    }
+                    
+                    if (e.ctrlKey) {
+                        // Ctrl+点击切换选择
+                        if (this.selectedClips.has(clip)) {
+                            this.selectedClips.delete(clip);
+                        } else {
+                            this.selectedClips.add(clip);
+                        }
+                    } else {
+                        this.selectedClips.add(clip);
+                    }
+                    
+                    // 开始拖拽
+                    this.isDragging = true;
+                    this.dragOffset.x = x - (clip.startTime * this.pixelsPerSecond * this.zoomFactor);
+                    this.canvas.style.cursor = 'move';
+                } else {
+                    // 开始框选
+                    if (!e.ctrlKey) {
+                        this.selectedClips.clear();
+                    }
+                    
+                    this.isSelecting = true;
+                    this.selectionStart = { x, y };
+                    this.selectionBox.style.display = 'block';
+                    this.selectionBox.style.left = x + 'px';
+                    this.selectionBox.style.top = y + 'px';
+                    this.selectionBox.style.width = '0px';
+                    this.selectionBox.style.height = '0px';
+                }
+                
+                this.updateToolbarButtons();
+                this.render();
+            }
+            
+            onMouseMove(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                if (this.isResizing && this.resizeHandle) {
+                    // 调整片段大小
+                    const clip = Array.from(this.selectedClips)[0];
+                    const newTime = (x / this.zoomFactor) / this.pixelsPerSecond;
+                    
+                    if (this.resizeHandle === 'left') {
+                        const maxStart = clip.startTime + clip.duration - 0.1; // 最小0.1秒
+                        clip.startTime = Math.max(0, Math.min(newTime, maxStart));
+                        clip.duration = clip.originalStartTime + clip.originalDuration - clip.startTime;
+                    } else if (this.resizeHandle === 'right') {
+                        const minDuration = 0.1;
+                        clip.duration = Math.max(minDuration, newTime - clip.startTime);
+                    }
+                    
+                    this.render();
+                } else if (this.isDragging && this.selectedClips.size > 0) {
+                    // 拖拽片段
+                    const deltaTime = ((x - this.dragOffset.x) / this.zoomFactor) / this.pixelsPerSecond;
+                    const snapTime = this.getSnapTime(deltaTime);
+                    
+                    this.selectedClips.forEach(clip => {
+                        clip.startTime = Math.max(0, snapTime);
+                    });
+                    
+                    this.render();
+                } else if (this.isSelecting) {
+                    // 更新选择框
+                    const width = Math.abs(x - this.selectionStart.x);
+                    const height = Math.abs(y - this.selectionStart.y);
+                    const left = Math.min(x, this.selectionStart.x);
+                    const top = Math.min(y, this.selectionStart.y);
+                    
+                    this.selectionBox.style.left = left + 'px';
+                    this.selectionBox.style.top = top + 'px';
+                    this.selectionBox.style.width = width + 'px';
+                    this.selectionBox.style.height = height + 'px';
+                    
+                    // 选择框内的片段
+                    this.clips.forEach(clip => {
+                        if (this.isClipInSelection(clip, left, top, width, height)) {
+                            this.selectedClips.add(clip);
+                        }
+                    });
+                } else {
+                    // 更新鼠标样式
+                    const clip = this.getClipAt(x, y);
+                    const handle = this.getResizeHandle(clip, x, y);
+                    
+                    if (handle) {
+                        this.canvas.style.cursor = 'ew-resize';
+                    } else if (clip) {
+                        this.canvas.style.cursor = 'move';
+                    } else {
+                        this.canvas.style.cursor = 'crosshair';
+                    }
+                }
+            }
+            
+            onMouseUp(e) {
+                if (this.isDragging) {
+                    this.selectedClips.forEach(clip => {
+                        this.notifyJava('clipMoved', this.clipToData(clip));
+                    });
+                }
+                
+                if (this.isSelecting) {
+                    this.selectionBox.style.display = 'none';
+                }
+                
+                this.isDragging = false;
+                this.isResizing = false;
+                this.isSelecting = false;
+                this.resizeHandle = null;
+                this.canvas.style.cursor = 'crosshair';
+                this.updateToolbarButtons();
+                this.render();
+            }
+            
+            onContextMenu(e) {
+                e.preventDefault();
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                const clip = this.getClipAt(x, y);
+                if (clip && !this.selectedClips.has(clip)) {
+                    this.selectedClips.clear();
+                    this.selectedClips.add(clip);
+                    this.render();
+                }
+                
+                this.contextMenu.style.display = 'block';
+                this.contextMenu.style.left = e.pageX + 'px';
+                this.contextMenu.style.top = e.pageY + 'px';
+                
+                this.updateToolbarButtons();
+            }
+            
+            onDoubleClick(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                const clip = this.getClipAt(x, y);
+                if (clip) {
+                    // 双击片段进入编辑模式
+                    this.notifyJava('clipDoubleClicked', this.clipToData(clip));
+                }
+            }
+            
+            onKeyDown(e) {
+                if (e.target.tagName === 'INPUT') return;
+                
+                switch (e.code) {
+                    case 'Space':
+                        e.preventDefault();
+                        this.isPlaying ? this.pause() : this.play();
+                        break;
+                    case 'Delete':
+                    case 'Backspace':
+                        e.preventDefault();
+                        this.deleteSelectedClips();
+                        break;
+                    case 'KeyC':
+                        if (e.ctrlKey) {
+                            e.preventDefault();
+                            this.copySelectedClips();
+                        }
+                        break;
+                    case 'KeyV':
+                        if (e.ctrlKey) {
+                            e.preventDefault();
+                            this.pasteClips();
+                        }
+                        break;
+                    case 'KeyX':
+                        if (e.ctrlKey) {
+                            e.preventDefault();
+                            this.cutSelectedClips();
+                        }
+                        break;
+                    case 'KeyA':
+                        if (e.ctrlKey) {
+                            e.preventDefault();
+                            this.selectAllClips();
+                        }
+                        break;
+                    case 'KeyS':
+                        if (e.ctrlKey) {
+                            e.preventDefault();
+                            this.splitClipAtPlayhead();
+                        }
+                        break;
+                }
+            }
+            
+            // 辅助方法
+            getClipAt(x, y) {
+                for (const clip of this.clips) {
+                    const trackIndex = this.getTrackIndex(clip.trackType);
+                    const clipY = trackIndex * 80 + 5;
+                    const clipX = clip.startTime * this.pixelsPerSecond * this.zoomFactor;
+                    const clipWidth = clip.duration * this.pixelsPerSecond * this.zoomFactor;
+                    
+                    if (x >= clipX && x <= clipX + clipWidth && y >= clipY && y <= clipY + 70) {
+                        return clip;
+                    }
+                }
+                return null;
+            }
+            
+            getResizeHandle(clip, x, y) {
+                if (!clip) return null;
+                
+                const trackIndex = this.getTrackIndex(clip.trackType);
+                const clipY = trackIndex * 80 + 5;
+                const clipX = clip.startTime * this.pixelsPerSecond * this.zoomFactor;
+                const clipWidth = clip.duration * this.pixelsPerSecond * this.zoomFactor;
+                
+                if (y >= clipY && y <= clipY + 70) {
+                    if (x >= clipX && x <= clipX + 8) {
+                        return 'left';
+                    } else if (x >= clipX + clipWidth - 8 && x <= clipX + clipWidth) {
+                        return 'right';
+                    }
+                }
+                return null;
+            }
+            
+            getTrackIndex(trackType) {
+                switch (trackType) {
+                    case 'video': return 0;
+                    case 'audio': return 1;
+                    case 'light': return 2;
+                    default: return 0;
+                }
+            }
+            
+            isClipInSelection(clip, left, top, width, height) {
+                const trackIndex = this.getTrackIndex(clip.trackType);
+                const clipY = trackIndex * 80 + 5;
+                const clipX = clip.startTime * this.pixelsPerSecond * this.zoomFactor;
+                const clipWidth = clip.duration * this.pixelsPerSecond * this.zoomFactor;
+                
+                return clipX < left + width && clipX + clipWidth > left && 
+                       clipY < top + height && clipY + 70 > top;
+            }
+            
+            getSnapTime(targetTime) {
+                // 对齐到其他片段的边缘
+                let snapTime = targetTime;
+                let minDistance = this.snapThreshold / (this.pixelsPerSecond * this.zoomFactor);
+                
+                this.clips.forEach(clip => {
+                    if (!this.selectedClips.has(clip)) {
+                        const startDistance = Math.abs(targetTime - clip.startTime);
+                        const endDistance = Math.abs(targetTime - (clip.startTime + clip.duration));
+                        
+                        if (startDistance < minDistance) {
+                            snapTime = clip.startTime;
+                            minDistance = startDistance;
+                        }
+                        if (endDistance < minDistance) {
+                            snapTime = clip.startTime + clip.duration;
+                            minDistance = endDistance;
+                        }
+                    }
+                });
+                
+                // 对齐到播放头
+                const playheadDistance = Math.abs(targetTime - this.currentTime);
+                if (playheadDistance < minDistance) {
+                    snapTime = this.currentTime;
+                }
+                
+                return snapTime;
+            }
+            
+            // 片段操作
+            addClipFromFile(file, startTime) {
+                const fileName = file.name.toLowerCase();
+                let trackType = 'video';
+                
+                if (fileName.includes('.mp3') || fileName.includes('.wav') || 
+                    fileName.includes('.m4a') || fileName.includes('.flac')) {
+                    trackType = 'audio';
+                }
+                
+                const clip = {
+                    id: Date.now() + Math.random(),
+                    name: file.name,
+                    trackType: trackType,
+                    startTime: startTime,
+                    duration: 60,
+                    file: file,
+                    originalStartTime: startTime,
+                    originalDuration: 60
+                };
+                
+                this.clips.push(clip);
+                this.selectedClips.clear();
+                this.selectedClips.add(clip);
+                this.render();
+                this.updateToolbarButtons();
+                
+                this.notifyJava('clipAdded', this.clipToData(clip));
+            }
+            
+            cutSelectedClips() {
+                this.copySelectedClips();
+                this.deleteSelectedClips();
+            }
+            
+            copySelectedClips() {
+                if (this.selectedClips.size > 0) {
+                    this.clipboard = Array.from(this.selectedClips).map(clip => ({...clip}));
+                    document.getElementById('pasteBtn').disabled = false;
+                }
+            }
+            
+            pasteClips() {
+                if (this.clipboard && this.clipboard.length > 0) {
+                    this.selectedClips.clear();
+                    
+                    this.clipboard.forEach(clipData => {
+                        const newClip = {
+                            ...clipData,
+                            id: Date.now() + Math.random(),
+                            startTime: this.currentTime
+                        };
+                        
+                        this.clips.push(newClip);
+                        this.selectedClips.add(newClip);
+                        this.notifyJava('clipAdded', this.clipToData(newClip));
+                    });
+                    
+                    this.render();
+                    this.updateToolbarButtons();
+                }
+            }
+            
+            deleteSelectedClips() {
+                this.selectedClips.forEach(clip => {
+                    const index = this.clips.indexOf(clip);
+                    if (index > -1) {
+                        this.clips.splice(index, 1);
+                        this.notifyJava('clipRemoved', this.clipToData(clip));
+                    }
+                });
+                
+                this.selectedClips.clear();
+                this.render();
+                this.updateToolbarButtons();
+            }
+            
+            splitClipAtPlayhead() {
+                const clipsToSplit = Array.from(this.selectedClips).filter(clip => 
+                    this.currentTime > clip.startTime && 
+                    this.currentTime < clip.startTime + clip.duration
+                );
+                
+                clipsToSplit.forEach(clip => {
+                    const splitTime = this.currentTime - clip.startTime;
+                    
+                    // 创建第二部分
+                    const newClip = {
+                        ...clip,
+                        id: Date.now() + Math.random(),
+                        startTime: this.currentTime,
+                        duration: clip.duration - splitTime
+                    };
+                    
+                    // 调整原片段
+                    clip.duration = splitTime;
+                    
+                    this.clips.push(newClip);
+                    this.selectedClips.add(newClip);
+                    
+                    this.notifyJava('clipAdded', this.clipToData(newClip));
+                });
+                
+                this.render();
+            }
+            
+            selectAllClips() {
+                this.selectedClips.clear();
+                this.clips.forEach(clip => this.selectedClips.add(clip));
+                this.render();
+                this.updateToolbarButtons();
+            }
+            
+            // 渲染方法
+            drawRuler() {
+                this.ruler.innerHTML = '';
+                const width = this.canvas.width;
+                const secondWidth = this.pixelsPerSecond * this.zoomFactor;
+                const interval = Math.max(1, Math.round(30 / secondWidth));
+                
+                for (let second = 0; second <= this.totalDuration; second += interval) {
+                    const x = second * secondWidth;
+                    if (x > width) break;
+                    
+                    const tick = document.createElement('div');
+                    tick.style.position = 'absolute';
+                    tick.style.left = x + 'px';
+                    tick.style.top = '0';
+                    tick.style.width = '1px';
+                    tick.style.height = '100%';
+                    tick.style.background = second % 10 === 0 ? '#666' : '#444';
+                    
+                    const label = document.createElement('div');
+                    label.style.position = 'absolute';
+                    label.style.left = (x + 2) + 'px';
+                    label.style.top = '5px';
+                    label.style.fontSize = '10px';
+                    label.style.color = '#ccc';
+                    label.style.fontFamily = 'Consolas, monospace';
+                    
+                    const minutes = Math.floor(second / 60);
+                    const seconds = second % 60;
+                    label.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                    
+                    this.ruler.appendChild(tick);
+                    this.ruler.appendChild(label);
+                }
+            }
+            
+            render() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // 绘制轨道背景
+                this.drawTracks();
+                
+                // 绘制片段
+                this.clips.forEach(clip => this.drawClip(clip));
+                
+                // 绘制关键帧
+                this.keyframes.forEach(keyframe => this.drawKeyframe(keyframe));
+                
+                // 更新播放头位置
+                this.updatePlayhead();
+            }
+            
+            drawTracks() {
+                const trackHeight = 80;
+                const colors = [
+                    'rgba(74, 144, 226, 0.05)',
+                    'rgba(92, 184, 92, 0.05)', 
+                    'rgba(240, 173, 78, 0.05)'
+                ];
+                
+                for (let i = 0; i < 3; i++) {
+                    this.ctx.fillStyle = colors[i];
+                    this.ctx.fillRect(0, i * trackHeight, this.canvas.width, trackHeight);
+                    
+                    this.ctx.strokeStyle = '#333';
+                    this.ctx.lineWidth = 1;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(0, (i + 1) * trackHeight);
+                    this.ctx.lineTo(this.canvas.width, (i + 1) * trackHeight);
+                    this.ctx.stroke();
+                }
+            }
+            
+            drawClip(clip) {
+                const trackIndex = this.getTrackIndex(clip.trackType);
+                const y = trackIndex * 80 + 5;
+                const x = clip.startTime * this.pixelsPerSecond * this.zoomFactor;
+                const width = clip.duration * this.pixelsPerSecond * this.zoomFactor;
+                const height = 70;
+                
+                // 片段背景
+                const colors = {
+                    video: this.selectedClips.has(clip) ? ['#5ba3f5', '#4a90e2'] : ['#4a90e2', '#357abd'],
+                    audio: this.selectedClips.has(clip) ? ['#6fc96f', '#5cb85c'] : ['#5cb85c', '#449d44'],
+                    light: this.selectedClips.has(clip) ? ['#f5c062', '#f0ad4e'] : ['#f0ad4e', '#ec971f']
+                };
+                
+                const gradient = this.ctx.createLinearGradient(x, y, x, y + height);
+                gradient.addColorStop(0, colors[clip.trackType][0]);
+                gradient.addColorStop(1, colors[clip.trackType][1]);
+                
+                this.ctx.fillStyle = gradient;
+                this.ctx.fillRect(x, y, width, height);
+                
+                // 边框
+                this.ctx.strokeStyle = this.selectedClips.has(clip) ? '#00ff88' : 'rgba(255,255,255,0.3)';
+                this.ctx.lineWidth = this.selectedClips.has(clip) ? 2 : 1;
+                this.ctx.strokeRect(x, y, width, height);
+                
+                // 文本
+                if (width > 60) {
+                    this.ctx.fillStyle = '#fff';
+                    this.ctx.font = 'bold 11px Microsoft YaHei';
+                    this.ctx.fillText(clip.name, x + 8, y + 20);
+                    
+                    this.ctx.font = '9px Microsoft YaHei';
+                    this.ctx.fillStyle = 'rgba(255,255,255,0.8)';
+                    this.ctx.fillText(this.formatDuration(clip.duration), x + 8, y + height - 8);
+                }
+                
+                // 调整手柄
+                if (this.selectedClips.has(clip) && width > 20) {
+                    this.ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                    this.ctx.fillRect(x, y, 8, height);
+                    this.ctx.fillRect(x + width - 8, y, 8, height);
+                }
+            }
+            
+            drawKeyframe(keyframe) {
+                const x = keyframe.time * this.pixelsPerSecond * this.zoomFactor;
+                const y = keyframe.track * 80 + 40;
+                
+                this.ctx.fillStyle = '#ffff00';
+                this.ctx.beginPath();
+                this.ctx.arc(x, y, 6, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                this.ctx.strokeStyle = '#fff';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+            }
+            
+            updatePlayhead() {
+                const x = this.currentTime * this.pixelsPerSecond * this.zoomFactor;
+                this.playhead.style.left = x + 'px';
+                
+                // 更新时间显示
+                const current = this.formatTime(this.currentTime);
+                const total = this.formatTime(this.totalDuration);
+                document.getElementById('timeDisplay').textContent = `${current} / ${total}`;
+            }
+            
+            updateToolbarButtons() {
+                const hasSelection = this.selectedClips.size > 0;
+                
+                document.getElementById('cutBtn').disabled = !hasSelection;
+                document.getElementById('copyBtn').disabled = !hasSelection;
+                document.getElementById('deleteBtn').disabled = !hasSelection;
+                document.getElementById('splitBtn').disabled = !hasSelection;
+                
+                document.getElementById('playBtn').disabled = this.isPlaying;
+                document.getElementById('pauseBtn').disabled = !this.isPlaying;
+            }
+            
+            // 工具方法
+            formatTime(seconds) {
+                const h = Math.floor(seconds / 3600);
+                const m = Math.floor((seconds % 3600) / 60);
+                const s = Math.floor(seconds % 60);
+                const ms = Math.floor((seconds % 1) * 1000);
+                return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+            }
+            
+            formatDuration(seconds) {
+                const m = Math.floor(seconds / 60);
+                const s = Math.floor(seconds % 60);
+                return `${m}:${s.toString().padStart(2, '0')}`;
+            }
+            
+            clipToData(clip) {
+                return {
+                    id: clip.id,
+                    name: clip.name,
+                    trackType: clip.trackType,
+                    startTime: clip.startTime,
+                    duration: clip.duration,
+                    filePath: clip.file ? clip.file.path : ''
+                };
+            }
+            
+            // 播放控制
+            play() {
+                this.isPlaying = true;
+                this.updateToolbarButtons();
+                this.notifyJava('playStateChanged', { playing: true });
+            }
+            
+            pause() {
+                this.isPlaying = false;
+                this.updateToolbarButtons();
+                this.notifyJava('playStateChanged', { playing: false });
+            }
+            
+            stop() {
+                this.isPlaying = false;
+                this.currentTime = 0;
+                this.updatePlayhead();
+                this.updateToolbarButtons();
+                this.notifyJava('playStateChanged', { playing: false });
+                this.notifyJava('timeChanged', { time: 0 });
+            }
+            
+            setCurrentTime(time) {
+                this.currentTime = Math.max(0, Math.min(time, this.totalDuration));
+                this.updatePlayhead();
+            }
+            
+            addKeyframe() {
+                const keyframe = {
+                    id: Date.now(),
+                    time: this.currentTime,
+                    track: 2,
+                    brightness: 100,
+                    color: '#ffffff',
+                    rhythm: 'normal'
+                };
+                
+                this.keyframes.push(keyframe);
+                this.render();
+                this.notifyJava('keyframeAdded', keyframe);
+            }
+            
+            // 轨道控制
+            toggleMute(btn) {
+                btn.classList.toggle('active');
+                // 实现静音逻辑
+            }
+            
+            toggleSolo(btn) {
+                btn.classList.toggle('active');
+                // 实现独奏逻辑
+            }
+            
+            // 上下文菜单操作
+            handleContextMenuAction(action) {
+                switch (action) {
+                    case 'cut':
+                        this.cutSelectedClips();
+                        break;
+                    case 'copy':
+                        this.copySelectedClips();
+                        break;
+                    case 'paste':
+                        this.pasteClips();
+                        break;
+                    case 'split':
+                        this.splitClipAtPlayhead();
+                        break;
+                    case 'duplicate':
+                        this.copySelectedClips();
+                        this.pasteClips();
+                        break;
+                    case 'delete':
+                        this.deleteSelectedClips();
+                        break;
+                }
+            }
+            
+            startAnimationLoop() {
+                const animate = () => {
+                    if (this.isPlaying) {
+                        this.currentTime += 1/60;
+                        if (this.currentTime >= this.totalDuration) {
+                            this.stop();
+                        } else {
+                            this.updatePlayhead();
+                        }
+                    }
+                    requestAnimationFrame(animate);
+                };
+                animate();
+            }
+            
+            // Java通信
+            notifyJava(event, data) {
+                if (window.javaConnector) {
+                    window.javaConnector.call(event, JSON.stringify(data));
+                }
+            }
+            
+            // 供Java调用的方法
+            setTime(time) {
+                this.setCurrentTime(time);
+            }
+            
+            setPlaying(playing) {
+                if (playing) {
+                    this.play();
+                } else {
+                    this.pause();
+                }
+            }
+            
+            addClipFromJava(clipData) {
+                const clip = {
+                    id: clipData.id,
+                    name: clipData.name,
+                    trackType: clipData.trackType,
+                    startTime: clipData.startTime,
+                    duration: clipData.duration,
+                    file: { path: clipData.filePath },
+                    originalStartTime: clipData.startTime,
+                    originalDuration: clipData.duration
+                };
+                
+                this.clips.push(clip);
+                this.render();
+            }
+            
+            clearAllClips() {
+                this.clips = [];
+                this.selectedClips.clear();
+                this.render();
+                this.updateToolbarButtons();
+            }
+        }
+        
+        // 初始化时间轴
+        const timeline = new ProfessionalTimelineEditor();
+        
+        // 暴露给Java的接口
+        window.timeline = timeline;
+    </script>
+</body>
+</html>

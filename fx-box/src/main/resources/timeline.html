@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>专业时间轴编辑器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: #2b2b2b;
+            color: white;
+            overflow: hidden;
+        }
+        
+        .timeline-container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .timeline-header {
+            height: 60px;
+            background: #1e1e1e;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            border-bottom: 1px solid #444;
+        }
+        
+        .timeline-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            background: #4a90e2;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .btn:hover {
+            background: #357abd;
+        }
+        
+        .btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        
+        .time-display {
+            font-family: monospace;
+            font-size: 14px;
+            margin-left: 20px;
+        }
+        
+        .zoom-control {
+            margin-left: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .zoom-slider {
+            width: 100px;
+        }
+        
+        .timeline-main {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        
+        .track-labels {
+            width: 120px;
+            background: #333;
+            border-right: 1px solid #444;
+        }
+        
+        .track-label {
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-bottom: 1px solid #444;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .track-label.video { background: #4a90e2; }
+        .track-label.audio { background: #5cb85c; }
+        .track-label.light { background: #f0ad4e; }
+        
+        .timeline-canvas-container {
+            flex: 1;
+            position: relative;
+            overflow: auto;
+        }
+        
+        .timeline-canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        
+        .timeline-ruler {
+            height: 30px;
+            background: #1e1e1e;
+            border-bottom: 1px solid #444;
+            position: relative;
+        }
+        
+        .playhead {
+            position: absolute;
+            top: 0;
+            width: 2px;
+            height: 100%;
+            background: #ff4444;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        
+        .playhead::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -5px;
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 10px solid #ff4444;
+        }
+        
+        .clip {
+            position: absolute;
+            height: 50px;
+            border-radius: 4px;
+            cursor: move;
+            display: flex;
+            align-items: center;
+            padding: 0 8px;
+            font-size: 11px;
+            font-weight: bold;
+            border: 1px solid rgba(255,255,255,0.3);
+            overflow: hidden;
+            white-space: nowrap;
+        }
+        
+        .clip.video {
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            top: 35px;
+        }
+        
+        .clip.audio {
+            background: linear-gradient(135deg, #5cb85c, #449d44);
+            top: 95px;
+        }
+        
+        .clip.light {
+            background: linear-gradient(135deg, #f0ad4e, #ec971f);
+            top: 155px;
+        }
+        
+        .clip:hover {
+            border-color: rgba(255,255,255,0.8);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        
+        .clip.selected {
+            border-color: #fff;
+            box-shadow: 0 0 0 2px #4a90e2;
+        }
+        
+        .drop-zone {
+            position: absolute;
+            top: 30px;
+            left: 0;
+            right: 0;
+            height: 180px;
+            border: 2px dashed transparent;
+            transition: all 0.3s ease;
+        }
+        
+        .drop-zone.drag-over {
+            border-color: #4a90e2;
+            background: rgba(74, 144, 226, 0.1);
+        }
+        
+        .waveform {
+            position: absolute;
+            height: 30px;
+            top: 15px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+        }
+        
+        .keyframe {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #ffff00;
+            border-radius: 50%;
+            cursor: pointer;
+            top: 26px;
+            margin-left: -4px;
+        }
+        
+        .keyframe:hover {
+            transform: scale(1.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="timeline-container">
+        <div class="timeline-header">
+            <div class="timeline-controls">
+                <button class="btn" id="playBtn">播放</button>
+                <button class="btn" id="pauseBtn" disabled>暂停</button>
+                <button class="btn" id="stopBtn">停止</button>
+                <button class="btn" id="addKeyframeBtn">添加关键帧</button>
+            </div>
+            <div class="time-display" id="timeDisplay">00:00:00 / 00:05:00</div>
+            <div class="zoom-control">
+                <label>缩放:</label>
+                <input type="range" class="zoom-slider" id="zoomSlider" min="0.1" max="5" step="0.1" value="1">
+                <span id="zoomValue">100%</span>
+            </div>
+        </div>
+        
+        <div class="timeline-main">
+            <div class="track-labels">
+                <div class="track-label video">视频轨道</div>
+                <div class="track-label audio">音频轨道</div>
+                <div class="track-label light">灯光轨道</div>
+            </div>
+            
+            <div class="timeline-canvas-container">
+                <div class="timeline-ruler" id="ruler"></div>
+                <div class="drop-zone" id="dropZone"></div>
+                <canvas class="timeline-canvas" id="timelineCanvas"></canvas>
+                <div class="playhead" id="playhead"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class ProfessionalTimeline {
+            constructor() {
+                this.canvas = document.getElementById('timelineCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.playhead = document.getElementById('playhead');
+                this.dropZone = document.getElementById('dropZone');
+                this.ruler = document.getElementById('ruler');
+                
+                this.pixelsPerSecond = 50;
+                this.totalDuration = 300; // 5分钟
+                this.currentTime = 0;
+                this.isPlaying = false;
+                this.zoomFactor = 1;
+                
+                this.clips = [];
+                this.keyframes = [];
+                this.selectedClip = null;
+                this.isDragging = false;
+                this.dragOffset = { x: 0, y: 0 };
+                
+                this.init();
+            }
+            
+            init() {
+                this.setupCanvas();
+                this.setupEventListeners();
+                this.setupDragAndDrop();
+                this.drawRuler();
+                this.render();
+                this.startAnimationLoop();
+            }
+            
+            setupCanvas() {
+                const container = this.canvas.parentElement;
+                this.canvas.width = Math.max(1200, this.totalDuration * this.pixelsPerSecond * this.zoomFactor);
+                this.canvas.height = 180;
+                this.canvas.style.width = this.canvas.width + 'px';
+                this.canvas.style.height = this.canvas.height + 'px';
+            }
+            
+            setupEventListeners() {
+                // 播放控制
+                document.getElementById('playBtn').addEventListener('click', () => this.play());
+                document.getElementById('pauseBtn').addEventListener('click', () => this.pause());
+                document.getElementById('stopBtn').addEventListener('click', () => this.stop());
+                document.getElementById('addKeyframeBtn').addEventListener('click', () => this.addKeyframe());
+                
+                // 缩放控制
+                const zoomSlider = document.getElementById('zoomSlider');
+                zoomSlider.addEventListener('input', (e) => {
+                    this.zoomFactor = parseFloat(e.target.value);
+                    document.getElementById('zoomValue').textContent = Math.round(this.zoomFactor * 100) + '%';
+                    this.setupCanvas();
+                    this.drawRuler();
+                    this.render();
+                });
+                
+                // 画布交互
+                this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
+                this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
+                this.canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
+                this.canvas.addEventListener('click', (e) => this.onCanvasClick(e));
+                
+                // 键盘快捷键
+                document.addEventListener('keydown', (e) => {
+                    if (e.code === 'Space') {
+                        e.preventDefault();
+                        this.isPlaying ? this.pause() : this.play();
+                    } else if (e.code === 'Delete' && this.selectedClip) {
+                        this.removeClip(this.selectedClip);
+                    }
+                });
+            }
+            
+            setupDragAndDrop() {
+                this.dropZone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    this.dropZone.classList.add('drag-over');
+                });
+                
+                this.dropZone.addEventListener('dragleave', () => {
+                    this.dropZone.classList.remove('drag-over');
+                });
+                
+                this.dropZone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    this.dropZone.classList.remove('drag-over');
+                    
+                    const files = Array.from(e.dataTransfer.files);
+                    const rect = this.canvas.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const time = (x / this.zoomFactor) / this.pixelsPerSecond;
+                    
+                    files.forEach(file => {
+                        this.addClipFromFile(file, time);
+                    });
+                });
+            }
+            
+            addClipFromFile(file, startTime) {
+                const fileName = file.name.toLowerCase();
+                let trackType = 'video';
+                
+                if (fileName.includes('.mp3') || fileName.includes('.wav') || fileName.includes('.m4a')) {
+                    trackType = 'audio';
+                }
+                
+                const clip = {
+                    id: Date.now() + Math.random(),
+                    name: file.name,
+                    trackType: trackType,
+                    startTime: startTime,
+                    duration: 60, // 默认60秒
+                    file: file
+                };
+                
+                this.clips.push(clip);
+                this.render();
+                
+                // 通知Java端
+                this.notifyJava('clipAdded', clip);
+            }
+            
+            drawRuler() {
+                this.ruler.innerHTML = '';
+                const width = this.canvas.width;
+                const secondWidth = this.pixelsPerSecond * this.zoomFactor;
+                const interval = Math.max(1, Math.round(30 / secondWidth));
+                
+                for (let second = 0; second <= this.totalDuration; second += interval) {
+                    const x = second * secondWidth;
+                    if (x > width) break;
+                    
+                    const tick = document.createElement('div');
+                    tick.style.position = 'absolute';
+                    tick.style.left = x + 'px';
+                    tick.style.top = '0';
+                    tick.style.width = '1px';
+                    tick.style.height = '100%';
+                    tick.style.background = '#666';
+                    
+                    const label = document.createElement('div');
+                    label.style.position = 'absolute';
+                    label.style.left = (x + 2) + 'px';
+                    label.style.top = '5px';
+                    label.style.fontSize = '10px';
+                    label.style.color = '#ccc';
+                    
+                    const minutes = Math.floor(second / 60);
+                    const seconds = second % 60;
+                    label.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                    
+                    this.ruler.appendChild(tick);
+                    this.ruler.appendChild(label);
+                }
+            }
+            
+            render() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // 绘制轨道背景
+                this.drawTracks();
+                
+                // 绘制片段
+                this.clips.forEach(clip => this.drawClip(clip));
+                
+                // 绘制关键帧
+                this.keyframes.forEach(keyframe => this.drawKeyframe(keyframe));
+                
+                // 更新播放头位置
+                this.updatePlayhead();
+            }
+            
+            drawTracks() {
+                const trackHeight = 60;
+                const colors = ['rgba(74, 144, 226, 0.1)', 'rgba(92, 184, 92, 0.1)', 'rgba(240, 173, 78, 0.1)'];
+                
+                for (let i = 0; i < 3; i++) {
+                    this.ctx.fillStyle = colors[i];
+                    this.ctx.fillRect(0, i * trackHeight, this.canvas.width, trackHeight);
+                    
+                    this.ctx.strokeStyle = '#444';
+                    this.ctx.lineWidth = 1;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(0, (i + 1) * trackHeight);
+                    this.ctx.lineTo(this.canvas.width, (i + 1) * trackHeight);
+                    this.ctx.stroke();
+                }
+            }
+            
+            drawClip(clip) {
+                const trackIndex = clip.trackType === 'video' ? 0 : clip.trackType === 'audio' ? 1 : 2;
+                const y = trackIndex * 60 + 5;
+                const x = clip.startTime * this.pixelsPerSecond * this.zoomFactor;
+                const width = clip.duration * this.pixelsPerSecond * this.zoomFactor;
+                const height = 50;
+                
+                // 片段背景
+                const colors = {
+                    video: ['#4a90e2', '#357abd'],
+                    audio: ['#5cb85c', '#449d44'],
+                    light: ['#f0ad4e', '#ec971f']
+                };
+                
+                const gradient = this.ctx.createLinearGradient(x, y, x, y + height);
+                gradient.addColorStop(0, colors[clip.trackType][0]);
+                gradient.addColorStop(1, colors[clip.trackType][1]);
+                
+                this.ctx.fillStyle = gradient;
+                this.ctx.fillRect(x, y, width, height);
+                
+                // 边框
+                this.ctx.strokeStyle = clip === this.selectedClip ? '#fff' : 'rgba(255,255,255,0.3)';
+                this.ctx.lineWidth = clip === this.selectedClip ? 2 : 1;
+                this.ctx.strokeRect(x, y, width, height);
+                
+                // 文本
+                if (width > 50) {
+                    this.ctx.fillStyle = '#fff';
+                    this.ctx.font = '11px Microsoft YaHei';
+                    this.ctx.fillText(clip.name, x + 5, y + height/2 + 4);
+                }
+            }
+            
+            drawKeyframe(keyframe) {
+                const x = keyframe.time * this.pixelsPerSecond * this.zoomFactor;
+                const y = keyframe.track * 60 + 26;
+                
+                this.ctx.fillStyle = '#ffff00';
+                this.ctx.beginPath();
+                this.ctx.arc(x, y, 4, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                this.ctx.strokeStyle = '#000';
+                this.ctx.lineWidth = 1;
+                this.ctx.stroke();
+            }
+            
+            updatePlayhead() {
+                const x = this.currentTime * this.pixelsPerSecond * this.zoomFactor;
+                this.playhead.style.left = x + 'px';
+                
+                // 更新时间显示
+                const current = this.formatTime(this.currentTime);
+                const total = this.formatTime(this.totalDuration);
+                document.getElementById('timeDisplay').textContent = `${current} / ${total}`;
+            }
+            
+            formatTime(seconds) {
+                const h = Math.floor(seconds / 3600);
+                const m = Math.floor((seconds % 3600) / 60);
+                const s = Math.floor(seconds % 60);
+                return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            }
+            
+            onMouseDown(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                const clip = this.getClipAt(x, y);
+                if (clip) {
+                    this.selectedClip = clip;
+                    this.isDragging = true;
+                    this.dragOffset.x = x - (clip.startTime * this.pixelsPerSecond * this.zoomFactor);
+                    this.canvas.style.cursor = 'grabbing';
+                } else {
+                    this.selectedClip = null;
+                }
+                
+                this.render();
+            }
+            
+            onMouseMove(e) {
+                if (this.isDragging && this.selectedClip) {
+                    const rect = this.canvas.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const newTime = Math.max(0, (x - this.dragOffset.x) / (this.pixelsPerSecond * this.zoomFactor));
+                    
+                    this.selectedClip.startTime = newTime;
+                    this.render();
+                }
+            }
+            
+            onMouseUp(e) {
+                if (this.isDragging) {
+                    this.isDragging = false;
+                    this.canvas.style.cursor = 'crosshair';
+                    
+                    if (this.selectedClip) {
+                        this.notifyJava('clipMoved', this.selectedClip);
+                    }
+                }
+            }
+            
+            onCanvasClick(e) {
+                if (!this.isDragging) {
+                    const rect = this.canvas.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const time = (x / this.zoomFactor) / this.pixelsPerSecond;
+                    
+                    this.setCurrentTime(Math.max(0, Math.min(time, this.totalDuration)));
+                    this.notifyJava('timeChanged', { time: this.currentTime });
+                }
+            }
+            
+            getClipAt(x, y) {
+                for (const clip of this.clips) {
+                    const trackIndex = clip.trackType === 'video' ? 0 : clip.trackType === 'audio' ? 1 : 2;
+                    const clipY = trackIndex * 60 + 5;
+                    const clipX = clip.startTime * this.pixelsPerSecond * this.zoomFactor;
+                    const clipWidth = clip.duration * this.pixelsPerSecond * this.zoomFactor;
+                    
+                    if (x >= clipX && x <= clipX + clipWidth && y >= clipY && y <= clipY + 50) {
+                        return clip;
+                    }
+                }
+                return null;
+            }
+            
+            play() {
+                this.isPlaying = true;
+                document.getElementById('playBtn').disabled = true;
+                document.getElementById('pauseBtn').disabled = false;
+                this.notifyJava('playStateChanged', { playing: true });
+            }
+            
+            pause() {
+                this.isPlaying = false;
+                document.getElementById('playBtn').disabled = false;
+                document.getElementById('pauseBtn').disabled = true;
+                this.notifyJava('playStateChanged', { playing: false });
+            }
+            
+            stop() {
+                this.isPlaying = false;
+                this.currentTime = 0;
+                document.getElementById('playBtn').disabled = false;
+                document.getElementById('pauseBtn').disabled = true;
+                this.updatePlayhead();
+                this.notifyJava('playStateChanged', { playing: false });
+                this.notifyJava('timeChanged', { time: 0 });
+            }
+            
+            addKeyframe() {
+                const keyframe = {
+                    id: Date.now(),
+                    time: this.currentTime,
+                    track: 2, // 灯光轨道
+                    brightness: 100,
+                    color: '#ffffff',
+                    rhythm: 'normal'
+                };
+                
+                this.keyframes.push(keyframe);
+                this.render();
+                this.notifyJava('keyframeAdded', keyframe);
+            }
+            
+            removeClip(clip) {
+                const index = this.clips.indexOf(clip);
+                if (index > -1) {
+                    this.clips.splice(index, 1);
+                    this.selectedClip = null;
+                    this.render();
+                    this.notifyJava('clipRemoved', clip);
+                }
+            }
+            
+            setCurrentTime(time) {
+                this.currentTime = time;
+                this.updatePlayhead();
+            }
+            
+            startAnimationLoop() {
+                const animate = () => {
+                    if (this.isPlaying) {
+                        this.currentTime += 1/60; // 60fps
+                        if (this.currentTime >= this.totalDuration) {
+                            this.stop();
+                        } else {
+                            this.updatePlayhead();
+                        }
+                    }
+                    requestAnimationFrame(animate);
+                };
+                animate();
+            }
+            
+            notifyJava(event, data) {
+                // 通过JavaFX WebEngine与Java通信
+                if (window.javaConnector) {
+                    window.javaConnector.call(event, JSON.stringify(data));
+                }
+            }
+            
+            // 供Java调用的方法
+            setTime(time) {
+                this.setCurrentTime(time);
+            }
+            
+            setPlaying(playing) {
+                if (playing) {
+                    this.play();
+                } else {
+                    this.pause();
+                }
+            }
+            
+            addClipFromJava(clipData) {
+                this.clips.push(clipData);
+                this.render();
+            }
+        }
+        
+        // 初始化时间轴
+        const timeline = new ProfessionalTimeline();
+        
+        // 暴露给Java的接口
+        window.timeline = timeline;
+    </script>
+</body>
+</html>
