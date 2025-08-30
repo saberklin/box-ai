@@ -1,5 +1,6 @@
 package com.boxai.service.impl;
 
+import com.boxai.domain.dto.device.AiVideoStreamCommand;
 import com.boxai.domain.dto.device.DeviceControlCommand;
 import com.boxai.domain.dto.device.LightingControlCommand;
 import com.boxai.service.DeviceControlService;
@@ -20,6 +21,7 @@ public class DeviceControlServiceImpl implements DeviceControlService {
 
     private static final String CHANNEL = "device:control";
     private static final String LIGHT_CHANNEL = "device:light";
+    private static final String AI_VIDEO_CHANNEL = "device:ai-video";
 
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
@@ -45,6 +47,18 @@ public class DeviceControlServiceImpl implements DeviceControlService {
         } catch (JsonProcessingException e) {
             log.error("序列化灯光命令失败", e);
             throw new RuntimeException("发布灯光命令失败");
+        }
+    }
+    
+    @Override
+    public void publishAiVideo(AiVideoStreamCommand command) {
+        try {
+            String payload = objectMapper.writeValueAsString(command);
+            stringRedisTemplate.convertAndSend(AI_VIDEO_CHANNEL, payload);
+            log.info("已发布AI视频流控制命令: streamId={}, action={}", command.getStreamId(), command.getAction());
+        } catch (JsonProcessingException e) {
+            log.error("序列化AI视频流命令失败", e);
+            throw new RuntimeException("发布AI视频流命令失败");
         }
     }
 }

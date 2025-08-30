@@ -113,6 +113,132 @@ public class MultiScreenManager {
       
       fullScreenStage.show();
     });
+    }
+  
+  /**
+   * 在指定屏幕全屏显示视频
+   */
+  public void showFullScreen(MediaPlayer player, int screenIndex) {
+    if (player == null) return;
+    
+    Platform.runLater(() -> {
+      // 停止之前的播放
+      stopAll();
+      
+      List<Screen> screens = Screen.getScreens();
+      if (screenIndex < 0 || screenIndex >= screens.size()) {
+        System.err.println("屏幕索引超出范围: " + screenIndex);
+        return;
+      }
+      
+      Screen targetScreen = screens.get(screenIndex);
+      Rectangle2D screenBounds = targetScreen.getBounds();
+      
+      // 创建新的舞台和媒体视图
+      fullScreenStage = new Stage();
+      fullScreenView = new MediaView(player);
+      
+      // 应用字体管理
+      FontManager.applyChineseFontToStage(fullScreenStage);
+      
+      BorderPane pane = new BorderPane(fullScreenView);
+      pane.setStyle("-fx-background-color: black;");
+      
+      Scene scene = new Scene(pane, screenBounds.getWidth(), screenBounds.getHeight());
+      
+      // 设置窗口属性
+      fullScreenStage.setX(screenBounds.getMinX());
+      fullScreenStage.setY(screenBounds.getMinY());
+      fullScreenStage.setWidth(screenBounds.getWidth());
+      fullScreenStage.setHeight(screenBounds.getHeight());
+      fullScreenStage.setFullScreen(true);
+      fullScreenStage.setAlwaysOnTop(false);
+      fullScreenStage.setTitle("视频输出 - 全屏模式");
+      
+      // 添加关闭事件处理
+      fullScreenStage.setOnCloseRequest(e -> {
+        fullScreenStage = null;
+        fullScreenView = null;
+      });
+      
+      // 添加ESC键退出全屏
+      scene.setOnKeyPressed(e -> {
+        if (e.getCode() == javafx.scene.input.KeyCode.ESCAPE) {
+          stopAll();
+        }
+      });
+      
+      fullScreenStage.setScene(scene);
+      
+      // 让 MediaView 尺寸适配屏幕并保持比例
+      fullScreenView.fitWidthProperty().bind(scene.widthProperty());
+      fullScreenView.fitHeightProperty().bind(scene.heightProperty());
+      
+      fullScreenStage.show();
+    });
+  }
+
+  /**
+   * 在指定屏幕的指定区域显示视频
+   */
+  public void showInRegion(MediaPlayer player, int screenIndex, int x, int y, int width, int height) {
+    if (player == null) return;
+    
+    Platform.runLater(() -> {
+      // 停止之前的播放
+      stopAll();
+      
+      List<Screen> screens = Screen.getScreens();
+      if (screenIndex < 0 || screenIndex >= screens.size()) {
+        System.err.println("屏幕索引超出范围: " + screenIndex);
+        return;
+      }
+      
+      Screen targetScreen = screens.get(screenIndex);
+      Rectangle2D screenBounds = targetScreen.getBounds();
+      
+      // 创建新的舞台和媒体视图
+      fullScreenStage = new Stage();
+      fullScreenView = new MediaView(player);
+      
+      // 应用字体管理
+      FontManager.applyChineseFontToStage(fullScreenStage);
+      
+      BorderPane pane = new BorderPane(fullScreenView);
+      pane.setStyle("-fx-background-color: black;");
+      
+      Scene scene = new Scene(pane, width, height);
+      
+      // 设置窗口属性 - 位置相对于目标屏幕
+      fullScreenStage.setX(screenBounds.getMinX() + x);
+      fullScreenStage.setY(screenBounds.getMinY() + y);
+      fullScreenStage.setWidth(width);
+      fullScreenStage.setHeight(height);
+      fullScreenStage.setFullScreen(false); // 区域模式不使用全屏
+      fullScreenStage.setAlwaysOnTop(true); // 区域窗口置顶
+      fullScreenStage.setTitle("视频输出 - 区域模式");
+      
+      // 添加关闭事件处理
+      fullScreenStage.setOnCloseRequest(e -> {
+        fullScreenStage = null;
+        fullScreenView = null;
+      });
+      
+      // 添加ESC键退出
+      scene.setOnKeyPressed(e -> {
+        if (e.getCode() == javafx.scene.input.KeyCode.ESCAPE) {
+          stopAll();
+        }
+      });
+      
+      fullScreenStage.setScene(scene);
+      
+      // 让 MediaView 尺寸适配窗口并保持比例
+      fullScreenView.fitWidthProperty().bind(scene.widthProperty());
+      fullScreenView.fitHeightProperty().bind(scene.heightProperty());
+      
+      fullScreenStage.show();
+    });
   }
 
   // 强制应用中文字体，解决字体回退问题

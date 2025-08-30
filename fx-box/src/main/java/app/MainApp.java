@@ -3,6 +3,7 @@ package app;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
@@ -21,9 +22,24 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.List;
 
 public class MainApp extends Application {
+  
+  // 媒体文件项
+  public static class MediaFileItem {
+    public String fileName;
+    public String filePath;
+    public String type; // "video" or "audio"
+    
+    public MediaFileItem(String fileName, String filePath, String type) {
+      this.fileName = fileName;
+      this.filePath = filePath;
+      this.type = type;
+    }
+  }
+  
   private MediaPlayer videoPlayer;
   private MediaView previewView;
   private ListView<File> videoList;
@@ -57,8 +73,9 @@ public class MainApp extends Application {
   private Label projectTimeLabel;
   
   // 时间轴编辑器
-  private StableTimelineEditor stableTimelineEditor;
+  private SimpleTimelineEditor simpleTimelineEditor;
   private MediaView syncPreviewView;
+  private InlineScreenMapper inlineScreenMapper;
   
 
 
@@ -565,8 +582,11 @@ public class MainApp extends Application {
   // === 同步控制相关方法 ===
   
   private VBox createSyncPane() {
-    // 创建稳定的时间轴编辑器
-    stableTimelineEditor = new StableTimelineEditor();
+    // 创建简化的时间轴编辑器
+    simpleTimelineEditor = new SimpleTimelineEditor();
+    
+    // 创建内嵌屏幕映射器
+    inlineScreenMapper = new InlineScreenMapper(multiScreen);
     
     // 创建视频预览
     syncPreviewView = new MediaView();
@@ -581,41 +601,57 @@ public class MainApp extends Application {
     );
     previewBox.setStyle("-fx-border-color: gray; -fx-border-width: 1; -fx-padding: 5;");
     
-    // 项目列表（缩小）
-    projectList = new ListView<>();
-    projectList.setPrefHeight(120);
-    projectList.setCellFactory(lv -> new ListCell<SyncController.SyncProject>() {
+    // 媒体文件列表
+    ListView<MediaFileItem> mediaFileList = new ListView<>();
+    mediaFileList.setPrefHeight(120);
+    mediaFileList.setCellFactory(lv -> new ListCell<MediaFileItem>() {
       @Override
-      protected void updateItem(SyncController.SyncProject item, boolean empty) {
+      protected void updateItem(MediaFileItem item, boolean empty) {
         super.updateItem(item, empty);
-        setText(empty ? null : item.name);
+        if (empty || item == null) {
+          setText(null);
+        } else {
+          setText(item.fileName + " [" + item.type + "]");
+        }
       }
     });
     
-    // 项目控制按钮
-    createProjectBtn = new Button("新建项目");
-    Button deleteProjectBtn = new Button("删除项目");
-    deleteProjectBtn.setOnAction(e -> deleteSelectedProject());
+    // 支持拖拽到时间轴
+    mediaFileList.setOnDragDetected(e -> {
+      MediaFileItem selectedItem = mediaFileList.getSelectionModel().getSelectedItem();
+      if (selectedItem != null) {
+        javafx.scene.input.Dragboard db = mediaFileList.startDragAndDrop(javafx.scene.input.TransferMode.COPY);
+        javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
+        java.util.List<java.io.File> files = new java.util.ArrayList<>();
+        files.add(new java.io.File(selectedItem.filePath));
+        content.putFiles(files);
+        db.setContent(content);
+        e.consume();
+      }
+    });
     
-    VBox projectControls = new VBox(5);
-    projectControls.getChildren().addAll(
-      new Label("项目管理:"),
-      projectList,
-      new HBox(5, createProjectBtn, deleteProjectBtn)
+    // 文件导入按钮
+    Button importVideoBtn = new Button("导入视频");
+    Button importAudioBtn = new Button("导入音频");
+    Button clearFilesBtn = new Button("清空");
+    
+    importVideoBtn.setOnAction(e -> importMediaFile("video", mediaFileList));
+    importAudioBtn.setOnAction(e -> importMediaFile("audio", mediaFileList));
+    clearFilesBtn.setOnAction(e -> {
+      mediaFileList.getItems().clear();
+      simpleTimelineEditor.clearAllClips();
+    });
+    
+    VBox fileControls = new VBox(5);
+    fileControls.getChildren().addAll(
+      new Label("媒体文件库 (拖拽到时间轴):"),
+      mediaFileList,
+      new HBox(5, importVideoBtn, importAudioBtn, clearFilesBtn)
     );
-    projectControls.setPrefWidth(200);
+    fileControls.setPrefWidth(200);
     
-    createProjectBtn.setOnAction(e -> createNewProject());
-    
-    // 监听项目选择
-    projectList.getSelectionModel().selectedItemProperty().addListener((obs, old, project) -> {
-      if (project != null) {
-        loadProjectToTimeline(project);
-      }
-    });
-    
-    // 设置稳定时间轴监听器
-    stableTimelineEditor.setListener(new StableTimelineEditor.TimelineListener() {
+    // 设置简化时间轴监听器
+    simpleTimelineEditor.setListener(new SimpleTimelineEditor.TimelineListener() {
       @Override
       public void onTimeChanged(double time) {
         if (syncController != null) {
@@ -624,29 +660,29 @@ public class MainApp extends Application {
       }
       
       @Override
-      public void onClipAdded(StableTimelineEditor.MediaClip clip) {
+      public void onClipAdded(SimpleTimelineEditor.MediaClip clip) {
         // 当添加媒体片段时，自动加载到播放器
-        loadStableClipToPlayer(clip);
+        loadSimpleClipToPlayer(clip);
         status.setText("已添加片段: " + clip.fileName);
       }
       
       @Override
-      public void onClipMoved(StableTimelineEditor.MediaClip clip) {
+      public void onClipMoved(SimpleTimelineEditor.MediaClip clip) {
         status.setText("片段已移动: " + clip.fileName + " 到 " + formatTime((int)clip.startTime));
       }
       
       @Override
-      public void onClipRemoved(StableTimelineEditor.MediaClip clip) {
+      public void onClipRemoved(SimpleTimelineEditor.MediaClip clip) {
         status.setText("已删除片段: " + clip.fileName);
       }
       
       @Override
-      public void onClipSelected(List<StableTimelineEditor.MediaClip> clips) {
+      public void onClipSelected(List<SimpleTimelineEditor.MediaClip> clips) {
         if (!clips.isEmpty()) {
-          StableTimelineEditor.MediaClip clip = clips.get(0);
+          SimpleTimelineEditor.MediaClip clip = clips.get(0);
           status.setText("已选择片段: " + clip.fileName);
           // 双击效果：加载到预览窗口
-          loadStableClipToPlayer(clip);
+          loadSimpleClipToPlayer(clip);
         }
       }
       
@@ -662,18 +698,57 @@ public class MainApp extends Application {
       }
     });
     
-    // 顶部区域：项目管理 + 预览
-    HBox topArea = new HBox(10);
-    topArea.getChildren().addAll(projectControls, previewBox);
+    // 播放控制区域
+    HBox playControls = new HBox(5);
+    playProjectBtn = new Button("播放");
+    pauseProjectBtn = new Button("暂停");
+    stopProjectBtn = new Button("停止");
     
-    // 主布局
-    VBox syncPane = new VBox(10);
-    syncPane.getChildren().addAll(
+    playProjectBtn.setOnAction(e -> {
+      if (syncController != null) syncController.play();
+    });
+    pauseProjectBtn.setOnAction(e -> {
+      if (syncController != null) syncController.pause();
+    });
+    stopProjectBtn.setOnAction(e -> {
+      if (syncController != null) syncController.stop();
+    });
+    
+    playControls.getChildren().addAll(playProjectBtn, pauseProjectBtn, stopProjectBtn);
+    
+    // 添加播放控制到文件控制区域
+    fileControls.getChildren().addAll(
+      new Separator(),
+      new Label("播放控制:"),
+      playControls
+    );
+    
+    // 顶部区域：文件管理 + 预览
+    HBox topArea = new HBox(10);
+    topArea.getChildren().addAll(fileControls, previewBox);
+    
+    // 主布局 - 左右分栏
+    HBox mainContent = new HBox(10);
+    
+    // 左侧：时间轴和控制
+    VBox leftPane = new VBox(10);
+    leftPane.getChildren().addAll(
       topArea,
       new Separator(),
-      new Label("稳定时间轴编辑器 - 拖拽媒体文件到轨道上 (支持快捷键: 空格键播放/暂停, Delete删除, 双击选择):"),
-      stableTimelineEditor
+      new Label("时间轴编辑器 - 从左侧文件库拖拽文件到轨道，或直接拖拽文件到轨道 (快捷键: 空格播放/暂停, Delete删除, 双击预览):"),
+      simpleTimelineEditor
     );
+    
+    // 右侧：屏幕映射
+    VBox rightPane = new VBox(5);
+    rightPane.getChildren().add(inlineScreenMapper);
+    rightPane.setPrefWidth(650);
+    
+    mainContent.getChildren().addAll(leftPane, rightPane);
+    HBox.setHgrow(leftPane, Priority.ALWAYS);
+    
+    VBox syncPane = new VBox(10);
+    syncPane.getChildren().add(mainContent);
     syncPane.setPadding(new Insets(10));
     
     return syncPane;
@@ -690,9 +765,9 @@ public class MainApp extends Application {
       @Override
       public void onTimeUpdate(double currentSeconds, double totalSeconds) {
         Platform.runLater(() -> {
-          // 更新稳定时间轴编辑器的播放头位置
-          if (stableTimelineEditor != null) {
-            stableTimelineEditor.setCurrentTime(currentSeconds);
+          // 更新简化时间轴编辑器的播放头位置
+          if (simpleTimelineEditor != null) {
+            simpleTimelineEditor.setCurrentTime(currentSeconds);
           }
         });
       }
@@ -700,9 +775,9 @@ public class MainApp extends Application {
       @Override
       public void onStateChanged(SyncController.PlayState newState) {
         Platform.runLater(() -> {
-          // 同步稳定时间轴编辑器的播放状态
-          if (stableTimelineEditor != null) {
-            stableTimelineEditor.setPlaying(newState == SyncController.PlayState.PLAYING);
+          // 同步简化时间轴编辑器的播放状态
+          if (simpleTimelineEditor != null) {
+            simpleTimelineEditor.setPlaying(newState == SyncController.PlayState.PLAYING);
           }
         });
       }
@@ -826,46 +901,46 @@ public class MainApp extends Application {
     if (selected != null) {
       projectList.getItems().remove(selected);
       // 清空时间轴
-      if (stableTimelineEditor != null) {
-        stableTimelineEditor.clearAllClips();
+      if (simpleTimelineEditor != null) {
+        simpleTimelineEditor.clearAllClips();
       }
     }
   }
   
   private void loadProjectToTimeline(SyncController.SyncProject project) {
-    if (stableTimelineEditor == null) return;
+    if (simpleTimelineEditor == null) return;
     
     // 清空当前时间轴
-    stableTimelineEditor.clearAllClips();
+    simpleTimelineEditor.clearAllClips();
     
     // 加载项目的媒体文件到时间轴
     if (project.videoFile != null && !project.videoFile.isEmpty()) {
       File videoFile = new File(project.videoFile);
       if (videoFile.exists()) {
-        StableTimelineEditor.MediaClip videoClip = new StableTimelineEditor.MediaClip(
+        SimpleTimelineEditor.MediaClip videoClip = new SimpleTimelineEditor.MediaClip(
           "video_" + System.currentTimeMillis(),
           videoFile.getName(),
           project.videoFile,
-          StableTimelineEditor.TrackType.VIDEO,
+          SimpleTimelineEditor.TrackType.VIDEO,
           0, // 从0开始
           project.totalDuration > 0 ? project.totalDuration : 60
         );
-        stableTimelineEditor.addClip(videoClip);
+        simpleTimelineEditor.addClip(videoClip);
       }
     }
     
     if (project.audioFile != null && !project.audioFile.isEmpty()) {
       File audioFile = new File(project.audioFile);
       if (audioFile.exists()) {
-        StableTimelineEditor.MediaClip audioClip = new StableTimelineEditor.MediaClip(
+        SimpleTimelineEditor.MediaClip audioClip = new SimpleTimelineEditor.MediaClip(
           "audio_" + System.currentTimeMillis(),
           audioFile.getName(),
           project.audioFile,
-          StableTimelineEditor.TrackType.AUDIO,
+          SimpleTimelineEditor.TrackType.AUDIO,
           0, // 从0开始
           project.totalDuration > 0 ? project.totalDuration : 60
         );
-        stableTimelineEditor.addClip(audioClip);
+        simpleTimelineEditor.addClip(audioClip);
       }
     }
     
@@ -1043,6 +1118,154 @@ public class MainApp extends Application {
       }
     }
   }
+  
+  private void loadSimpleClipToPlayer(SimpleTimelineEditor.MediaClip clip) {
+    if (clip.trackType == SimpleTimelineEditor.TrackType.VIDEO) {
+      try {
+        File videoFile = new File(clip.filePath);
+        if (videoFile.exists()) {
+          // 加载视频到预览窗口
+          if (videoPlayer != null) {
+            videoPlayer.dispose();
+          }
+          
+          Media media = new Media(videoFile.toURI().toString());
+          videoPlayer = new MediaPlayer(media);
+          syncPreviewView.setMediaPlayer(videoPlayer);
+          
+          // 设置到同步控制器
+          syncController.setVideoPlayer(videoPlayer);
+          
+          videoPlayer.setOnReady(() -> {
+            status.setText("视频已加载: " + clip.fileName);
+          });
+          
+          videoPlayer.setOnError(() -> {
+            status.setText("视频加载错误: " + videoPlayer.getError());
+          });
+        }
+      } catch (Exception e) {
+        status.setText("加载视频失败: " + e.getMessage());
+      }
+    } else if (clip.trackType == SimpleTimelineEditor.TrackType.AUDIO) {
+      try {
+        File audioFile = new File(clip.filePath);
+        if (audioFile.exists()) {
+          // 加载音频
+          if (audioPlayer != null) {
+            audioPlayer.dispose();
+          }
+          
+          Media media = new Media(audioFile.toURI().toString());
+          audioPlayer = new MediaPlayer(media);
+          
+          // 设置到同步控制器
+          syncController.setAudioPlayer(audioPlayer);
+          
+          audioPlayer.setOnReady(() -> {
+            status.setText("音频已加载: " + clip.fileName);
+          });
+          
+          audioPlayer.setOnError(() -> {
+            status.setText("音频加载错误: " + audioPlayer.getError());
+          });
+        }
+      } catch (Exception e) {
+        status.setText("加载音频失败: " + e.getMessage());
+      }
+    }
+  }
+  
+  private void importMediaFile(String type, ListView<MediaFileItem> mediaFileList) {
+    FileChooser fileChooser = new FileChooser();
+    fileChooser.setTitle("选择" + ("video".equals(type) ? "视频" : "音频") + "文件");
+    
+    // 设置文件过滤器
+    if ("video".equals(type)) {
+      fileChooser.getExtensionFilters().addAll(
+        new FileChooser.ExtensionFilter("视频文件", "*.mp4", "*.avi", "*.mov", "*.mkv", "*.wmv", "*.flv"),
+        new FileChooser.ExtensionFilter("所有文件", "*.*")
+      );
+    } else {
+      fileChooser.getExtensionFilters().addAll(
+        new FileChooser.ExtensionFilter("音频文件", "*.mp3", "*.wav", "*.m4a", "*.flac", "*.aac", "*.ogg"),
+        new FileChooser.ExtensionFilter("所有文件", "*.*")
+      );
+    }
+    
+    List<File> selectedFiles = fileChooser.showOpenMultipleDialog(null);
+    if (selectedFiles != null) {
+      double startTime = 0;
+      for (File file : selectedFiles) {
+        // 添加到文件列表
+        MediaFileItem item = new MediaFileItem(file.getName(), file.getAbsolutePath(), type);
+        mediaFileList.getItems().add(item);
+        
+        // 自动添加到时间轴
+        SimpleTimelineEditor.TrackType trackType = "video".equals(type) 
+          ? SimpleTimelineEditor.TrackType.VIDEO 
+          : SimpleTimelineEditor.TrackType.AUDIO;
+          
+        SimpleTimelineEditor.MediaClip clip = new SimpleTimelineEditor.MediaClip(
+          "clip_" + System.currentTimeMillis(),
+          file.getName(),
+          file.getAbsolutePath(),
+          trackType,
+          startTime,
+          60.0 // 默认60秒
+        );
+        
+        if (simpleTimelineEditor != null) {
+          simpleTimelineEditor.addClip(clip);
+        }
+        
+        startTime += 1; // 错开1秒避免重叠
+        status.setText("已导入并添加到时间轴: " + file.getName());
+      }
+      
+      // 如果是第一个视频文件，自动加载到预览窗口
+      if ("video".equals(type) && selectedFiles.size() > 0) {
+        File firstVideo = selectedFiles.get(0);
+        loadVideoToPreview(firstVideo);
+      }
+    }
+  }
+  
+  private void loadVideoToPreview(File videoFile) {
+    try {
+      if (videoFile != null && videoFile.exists()) {
+        // 释放之前的播放器
+        if (videoPlayer != null) {
+          videoPlayer.dispose();
+        }
+        
+        Media media = new Media(videoFile.toURI().toString());
+        videoPlayer = new MediaPlayer(media);
+        syncPreviewView.setMediaPlayer(videoPlayer);
+        
+        // 设置到同步控制器
+        if (syncController != null) {
+          syncController.setVideoPlayer(videoPlayer);
+        }
+        
+        videoPlayer.setOnReady(() -> {
+          status.setText("视频已加载到预览窗口: " + videoFile.getName());
+          // 通知内嵌映射器
+          if (inlineScreenMapper != null) {
+            inlineScreenMapper.setCurrentPlayer(videoPlayer, syncPreviewView);
+          }
+        });
+        
+        videoPlayer.setOnError(() -> {
+          status.setText("视频加载错误: " + videoPlayer.getError());
+        });
+      }
+    } catch (Exception e) {
+      status.setText("加载视频到预览窗口失败: " + e.getMessage());
+    }
+  }
+  
+
 
   // 音频设备管理方法
   private void refreshAudioDeviceList() {
@@ -1165,5 +1388,160 @@ public class MainApp extends Application {
     } else if (audioPlayer != null) {
       audioPlayer.stop();
     }
+  }
+  
+  // ============ AI视频流处理功能 ============
+  
+  private MediaPlayer aiVideoPlayer;
+  private String currentAiStreamId;
+  
+  /**
+   * 开始播放AI视频流
+   */
+  public void startAiVideoStream(String streamId, String streamUrl, String hlsUrl, String webrtcUrl) {
+    try {
+      status.setText("正在连接AI视频流: " + streamId);
+      
+      // 停止当前的AI视频流
+      if (aiVideoPlayer != null) {
+        stopAiVideoStream(currentAiStreamId);
+      }
+      
+      // 优先使用HLS流，其次RTMP流
+      String playUrl = hlsUrl != null ? hlsUrl : streamUrl;
+      if (playUrl == null) {
+        status.setText("AI视频流地址无效");
+        return;
+      }
+      
+      // 创建AI视频播放器
+      Media media = new Media(playUrl);
+      aiVideoPlayer = new MediaPlayer(media);
+      
+      // 设置到预览窗口（可以考虑创建专门的AI视频窗口）
+      previewView.setMediaPlayer(aiVideoPlayer);
+      
+      aiVideoPlayer.setOnReady(() -> {
+        status.setText("AI视频流已连接: " + streamId);
+        currentAiStreamId = streamId;
+        
+        // 自动播放
+        aiVideoPlayer.play();
+        
+        // 如果有多屏输出，推送到大屏
+        pushAiVideoToMainScreen();
+      });
+      
+      aiVideoPlayer.setOnError(() -> {
+        String error = aiVideoPlayer.getError() != null ? aiVideoPlayer.getError().getMessage() : "未知错误";
+        status.setText("AI视频流错误: " + error);
+        System.err.println("AI视频流播放错误: " + error);
+      });
+      
+      aiVideoPlayer.setOnEndOfMedia(() -> {
+        status.setText("AI视频流结束: " + streamId);
+        currentAiStreamId = null;
+      });
+      
+      System.out.println("开始播放AI视频流: " + streamId + " -> " + playUrl);
+      
+    } catch (Exception e) {
+      status.setText("启动AI视频流失败: " + e.getMessage());
+      System.err.println("启动AI视频流失败: " + e.getMessage());
+      e.printStackTrace();
+    }
+  }
+  
+  /**
+   * 停止AI视频流
+   */
+  public void stopAiVideoStream(String streamId) {
+    try {
+      if (aiVideoPlayer != null) {
+        aiVideoPlayer.stop();
+        aiVideoPlayer.dispose();
+        aiVideoPlayer = null;
+      }
+      
+      if (streamId != null && streamId.equals(currentAiStreamId)) {
+        currentAiStreamId = null;
+        status.setText("AI视频流已停止: " + streamId);
+      }
+      
+      System.out.println("停止AI视频流: " + streamId);
+      
+    } catch (Exception e) {
+      System.err.println("停止AI视频流失败: " + e.getMessage());
+      e.printStackTrace();
+    }
+  }
+  
+  /**
+   * 将AI视频推送到主屏幕
+   */
+  private void pushAiVideoToMainScreen() {
+    try {
+      // 如果有多屏管理器，将AI视频输出到主屏
+      if (multiScreenManager != null && aiVideoPlayer != null) {
+        // 这里可以实现将AI视频流推送到指定的大屏显示器
+        // 具体实现取决于多屏管理器的API
+        System.out.println("将AI视频流推送到大屏显示");
+        
+        // 示例：创建一个新的Stage在主屏显示AI视频
+        Platform.runLater(() -> {
+          try {
+            Stage aiVideoStage = new Stage();
+            aiVideoStage.setTitle("AI视频流 - " + currentAiStreamId);
+            aiVideoStage.setFullScreen(true);
+            aiVideoStage.setFullScreenExitHint("");
+            
+            MediaView aiVideoView = new MediaView();
+            aiVideoView.setMediaPlayer(aiVideoPlayer);
+            aiVideoView.setPreserveRatio(false);
+            
+            StackPane root = new StackPane();
+            root.getChildren().add(aiVideoView);
+            root.setStyle("-fx-background-color: black;");
+            
+            Scene scene = new Scene(root);
+            aiVideoStage.setScene(scene);
+            
+            // 绑定视频视图大小到场景大小
+            aiVideoView.fitWidthProperty().bind(scene.widthProperty());
+            aiVideoView.fitHeightProperty().bind(scene.heightProperty());
+            
+            // 显示在主屏幕
+            Screen primaryScreen = Screen.getPrimary();
+            aiVideoStage.setX(primaryScreen.getVisualBounds().getMinX());
+            aiVideoStage.setY(primaryScreen.getVisualBounds().getMinY());
+            
+            aiVideoStage.show();
+            
+            // 当AI视频播放器停止时，关闭舞台
+            aiVideoPlayer.setOnStopped(() -> Platform.runLater(aiVideoStage::close));
+            
+          } catch (Exception e) {
+            System.err.println("创建AI视频大屏显示失败: " + e.getMessage());
+          }
+        });
+      }
+      
+    } catch (Exception e) {
+      System.err.println("推送AI视频到大屏失败: " + e.getMessage());
+    }
+  }
+  
+  /**
+   * 获取当前AI视频播放器
+   */
+  public MediaPlayer getAiVideoPlayer() {
+    return aiVideoPlayer;
+  }
+  
+  /**
+   * 获取当前AI流ID
+   */
+  public String getCurrentAiStreamId() {
+    return currentAiStreamId;
   }
 }

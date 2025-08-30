@@ -199,7 +199,7 @@ public class FontManager {
             try {
                 // 这里可以添加全局监听器，但JavaFX没有直接的API
                 // 所以我们采用在创建窗口时手动调用的方式
-                System.out.println("字体管理器已启用，请在创建新窗口时调用 FontManager.applyChineseFontToStage()");
+                // 字体管理器已启用
             } catch (Exception e) {
                 System.err.println("启用自动字体应用失败: " + e.getMessage());
             }

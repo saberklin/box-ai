@@ -435,3 +435,64 @@ comment on column t_user_behavior.target_type is '目标类型';
 comment on column t_user_behavior.metadata is '元数据JSON';
 comment on column t_user_behavior.session_id is '会话ID';
 comment on column t_user_behavior.created_at is '创建时间';
+
+-- AI视频生成会话表
+create table if not exists t_ai_video_session (
+  id bigint primary key,
+  room_id bigint references t_room(id) on delete cascade,
+  user_id bigint references t_user(id) on delete set null,
+  stream_id varchar(64) unique not null,
+  video_type varchar(32) not null,
+  prompt text,
+  style varchar(32),
+  resolution varchar(16) default '1920x1080',
+  frame_rate int default 30,
+  duration int default 60,
+  audio_sync boolean default false,
+  current_track_id bigint references t_track(id) on delete set null,
+  status varchar(16) default 'PENDING',
+  progress int default 0,
+  stream_url varchar(512),
+  webrtc_url varchar(512),
+  hls_url varchar(512),
+  bitrate int,
+  start_time timestamptz default now(),
+  end_time timestamptz,
+  error_message text,
+  generation_info text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- AI视频会话索引
+create index if not exists idx_ai_video_session_room on t_ai_video_session(room_id);
+create index if not exists idx_ai_video_session_stream on t_ai_video_session(stream_id);
+create index if not exists idx_ai_video_session_status on t_ai_video_session(status);
+create index if not exists idx_ai_video_session_start_time on t_ai_video_session(start_time desc);
+
+-- AI视频会话表注释
+comment on table t_ai_video_session is 'AI视频生成会话表';
+comment on column t_ai_video_session.id is '主键ID（应用生成）';
+comment on column t_ai_video_session.room_id is '包间ID';
+comment on column t_ai_video_session.user_id is '用户ID';
+comment on column t_ai_video_session.stream_id is '流任务ID（唯一）';
+comment on column t_ai_video_session.video_type is '视频类型';
+comment on column t_ai_video_session.prompt is 'AI提示词';
+comment on column t_ai_video_session.style is '视频风格';
+comment on column t_ai_video_session.resolution is '视频分辨率';
+comment on column t_ai_video_session.frame_rate is '帧率';
+comment on column t_ai_video_session.duration is '视频时长（秒）';
+comment on column t_ai_video_session.audio_sync is '音频同步';
+comment on column t_ai_video_session.current_track_id is '当前播放的歌曲ID';
+comment on column t_ai_video_session.status is '生成状态';
+comment on column t_ai_video_session.progress is '生成进度';
+comment on column t_ai_video_session.stream_url is '流媒体URL';
+comment on column t_ai_video_session.webrtc_url is 'WebRTC流URL';
+comment on column t_ai_video_session.hls_url is 'HLS播放URL';
+comment on column t_ai_video_session.bitrate is '比特率';
+comment on column t_ai_video_session.start_time is '开始时间';
+comment on column t_ai_video_session.end_time is '结束时间';
+comment on column t_ai_video_session.error_message is '错误信息';
+comment on column t_ai_video_session.generation_info is '生成参数信息';
+comment on column t_ai_video_session.created_at is '创建时间';
+comment on column t_ai_video_session.updated_at is '更新时间';

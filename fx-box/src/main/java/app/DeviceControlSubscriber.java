@@ -39,7 +39,7 @@ public class DeviceControlSubscriber implements Closeable {
             // 同时处理 device:control 与 device:light
             handleMessage(msg);
           }
-        }, channel, "device:light");
+        }, channel, "device:light", "device:ai-video");
       } catch (Exception e) {
         // 日志仅控制台
         System.err.println("Redis 订阅异常: " + e.getMessage());
@@ -66,6 +66,17 @@ public class DeviceControlSubscriber implements Closeable {
           var p = app.videoPlayer(); if (p != null) p.stop();
         });
         case "NEXT" -> Platform.runLater(app::playNextFromList);
+        case "START_STREAM" -> { // AI视频流开始
+          String streamId = text(root, "streamId");
+          String streamUrl = text(root, "streamUrl");
+          String hlsUrl = text(root, "hlsUrl");
+          String webrtcUrl = text(root, "webrtcUrl");
+          Platform.runLater(() -> app.startAiVideoStream(streamId, streamUrl, hlsUrl, webrtcUrl));
+        }
+        case "STOP_STREAM" -> { // AI视频流停止
+          String streamId = text(root, "streamId");
+          Platform.runLater(() -> app.stopAiVideoStream(streamId));
+        }
         case "" -> { // 灯光命令无 action，转发为 DMX
           Integer brightness = root.hasNonNull("brightness") ? root.get("brightness").asInt() : null;
           String color = text(root, "color");

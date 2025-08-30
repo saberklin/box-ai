@@ -1,5 +1,6 @@
 package com.boxai.service;
 
+import com.boxai.domain.dto.device.AiVideoStreamCommand;
 import com.boxai.domain.dto.device.DeviceControlCommand;
 import com.boxai.domain.dto.device.LightingControlCommand;
 
@@ -18,6 +19,12 @@ public interface DeviceControlService {
      * 发布灯光控制命令
      */
     void publishLighting(LightingControlCommand command);
+    
+    /**
+     * 发布AI视频流控制命令
+     * @param command AI视频流命令
+     */
+    void publishAiVideo(AiVideoStreamCommand command);
 }
 
 
