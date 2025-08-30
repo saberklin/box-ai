@@ -1,0 +1,51 @@
+# AI视频生成服务配置
+app:
+  ai:
+    # AI服务提供商: mock, runway, stability
+    provider: mock
+    
+    # Runway ML配置
+    runway:
+      api-key: ${RUNWAY_API_KEY:your-runway-api-key}
+      base-url: https://api.runwayml.com
+      model: gen3a_turbo
+      
+    # Stability AI配置  
+    stability:
+      api-key: ${STABILITY_API_KEY:your-stability-api-key}
+      base-url: https://api.stability.ai
+      
+  # 流媒体服务配置
+  streaming:
+    # RTMP推流地址
+    rtmp-url: rtmp://localhost:1935/live
+    # HLS播放地址
+    hls-url: http://localhost:8080/hls
+    # WebRTC地址
+    webrtc-url: webrtc://localhost:8080/stream
+    
+    # FFmpeg配置
+    ffmpeg:
+      # FFmpeg可执行文件路径
+      path: ffmpeg
+      # 视频编码参数
+      video-codec: libx264
+      audio-codec: aac
+      # 输出格式
+      format: flv
+      # 额外参数
+      extra-args: "-re -preset ultrafast -tune zerolatency"
+
+# WebClient配置
+spring:
+  webflux:
+    # 连接超时
+    timeout: 30s
+  
+# 日志配置
+logging:
+  level:
+    com.boxai.service.impl.RunwayMLVideoClient: DEBUG
+    com.boxai.service.impl.StableDiffusionVideoClient: DEBUG
+    com.boxai.service.impl.MockAiVideoClient: DEBUG
+    com.boxai.service.impl.AiVideoServiceImpl: DEBUG

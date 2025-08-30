@@ -6,6 +6,7 @@ import com.boxai.domain.dto.device.AiVideoStreamCommand;
 import com.boxai.domain.dto.request.AiVideoGenerateRequest;
 import com.boxai.domain.entity.AiVideoSession;
 import com.boxai.domain.mapper.AiVideoSessionMapper;
+import com.boxai.service.AiVideoGenerationClient;
 import com.boxai.service.AiVideoService;
 import com.boxai.service.DeviceControlService;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +15,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -30,6 +32,7 @@ public class AiVideoServiceImpl implements AiVideoService {
     
     private final AiVideoSessionMapper aiVideoSessionMapper;
     private final DeviceControlService deviceControlService;
+    private final AiVideoGenerationClient aiVideoGenerationClient;
     
     // AI视频生成服务的基础URL（实际部署时需要配置）
     private static final String AI_VIDEO_SERVICE_URL = "http://localhost:8888";
@@ -62,7 +65,7 @@ public class AiVideoServiceImpl implements AiVideoService {
         // 异步启动AI视频生成
         CompletableFuture.runAsync(() -> {
             try {
-                startAiVideoGeneration(session);
+                startAiVideoGenerationWithClient(session, request);
             } catch (Exception e) {
                 log.error("AI视频生成失败: streamId={}", streamId, e);
                 updateSessionStatus(streamId, "FAILED", 0, e.getMessage());
@@ -210,53 +213,134 @@ public class AiVideoServiceImpl implements AiVideoService {
     }
     
     /**
-     * 启动AI视频生成（模拟实现）
+     * 使用AI客户端启动视频生成
      */
-    private void startAiVideoGeneration(AiVideoSession session) {
+    private void startAiVideoGenerationWithClient(AiVideoSession session, AiVideoGenerateRequest request) {
         String streamId = session.getStreamId();
         
         try {
-            // 更新状态为生成中
-            updateSessionStatus(streamId, "GENERATING", 0, null);
+            log.info("开始AI视频生成: streamId={}, provider={}", streamId, aiVideoGenerationClient.getClass().getSimpleName());
             
-            // 模拟AI视频生成过程
-            for (int progress = 0; progress <= 100; progress += 10) {
-                Thread.sleep(2000); // 模拟生成时间
-                
-                String status = progress < 100 ? "GENERATING" : "STREAMING";
-                updateSessionStatus(streamId, status, progress, null);
-                
-                // 当进度达到50%时开始流式传输
-                if (progress == 50) {
-                    // 这里应该调用实际的AI视频生成服务
-                    // 例如：调用 Stable Video Diffusion, RunwayML, 或其他AI视频生成API
-                    log.info("AI视频生成达到50%，开始流式传输: streamId={}", streamId);
-                }
+            // 1. 启动AI生成任务
+            String taskId = aiVideoGenerationClient.startGeneration(request, session)
+                    .block(Duration.ofSeconds(30));
+            
+            if (taskId == null) {
+                throw new RuntimeException("启动AI生成任务失败");
             }
             
-            // 生成完成，持续流式传输
-            log.info("AI视频生成完成，开始持续流式传输: streamId={}", streamId);
+            // 更新会话信息
+            session.setGenerationInfo("AI Task ID: " + taskId);
+            aiVideoSessionMapper.updateById(session);
             
-            // 根据设定的时长持续流式传输
-            Thread.sleep(session.getDuration() * 1000L);
+            log.info("AI生成任务启动成功: streamId={}, taskId={}", streamId, taskId);
             
-            updateSessionStatus(streamId, "COMPLETED", 100, null);
-            
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            updateSessionStatus(streamId, "STOPPED", session.getProgress(), "用户停止");
+            // 2. 监听生成进度
+            aiVideoGenerationClient.getProgressStream(taskId)
+                    .doOnNext(progress -> {
+                        log.debug("收到进度更新: streamId={}, progress={}%, status={}", 
+                                streamId, progress.progress(), progress.status());
+                        
+                        // 更新数据库状态
+                        updateSessionStatus(streamId, progress.status(), progress.progress(), progress.message());
+                        
+                        // 当状态变为STREAMING时，推送到桌面端
+                        if ("STREAMING".equals(progress.status()) || 
+                            ("COMPLETED".equals(progress.status()) && progress.progress() >= 100)) {
+                            
+                            // 获取生成结果并推送流
+                            aiVideoGenerationClient.getGenerationResult(taskId)
+                                    .subscribe(result -> {
+                                        if (result.streamUrl() != null) {
+                                            // 更新会话的流URL
+                                            AiVideoSession updatedSession = getSessionByStreamId(streamId);
+                                            if (updatedSession != null) {
+                                                updatedSession.setStreamUrl(result.streamUrl());
+                                                updatedSession.setHlsUrl(result.hlsUrl());
+                                                updatedSession.setWebrtcUrl(result.webrtcUrl());
+                                                aiVideoSessionMapper.updateById(updatedSession);
+                                            }
+                                            
+                                            // 推送到桌面端
+                                            pushStreamToDesktop(streamId, session.getRoomId());
+                                        }
+                                    }, error -> {
+                                        log.error("获取生成结果失败: streamId={}", streamId, error);
+                                    });
+                        }
+                    })
+                    .doOnComplete(() -> {
+                        log.info("AI视频生成进度流完成: streamId={}", streamId);
+                    })
+                    .doOnError(error -> {
+                        log.error("AI视频生成进度流出错: streamId={}", streamId, error);
+                        updateSessionStatus(streamId, "FAILED", 0, error.getMessage());
+                    })
+                    .subscribe();
+                    
         } catch (Exception e) {
-            log.error("AI视频生成过程中出错: streamId={}", streamId, e);
-            updateSessionStatus(streamId, "FAILED", session.getProgress(), e.getMessage());
+            log.error("AI视频生成启动失败: streamId={}", streamId, e);
+            updateSessionStatus(streamId, "FAILED", 0, e.getMessage());
         }
     }
     
+    @Override
+    public AiVideoSession getSessionByStreamId(String streamId) {
+        QueryWrapper<AiVideoSession> queryWrapper = new QueryWrapper<>();
+        queryWrapper.eq("stream_id", streamId);
+        return aiVideoSessionMapper.selectOne(queryWrapper);
+    }
+    
+    @Override
+    public List<AiVideoSession> getActiveSessions(Integer limit) {
+        QueryWrapper<AiVideoSession> queryWrapper = new QueryWrapper<>();
+        queryWrapper.in("status", "PENDING", "GENERATING", "STREAMING")
+                   .orderByDesc("created_at")
+                   .last("LIMIT " + (limit != null ? limit : 50));
+        
+        return aiVideoSessionMapper.selectList(queryWrapper);
+    }
+    
+
+    
     /**
-     * 停止AI视频生成（模拟实现）
+     * 停止AI视频生成
      */
     private void stopAiVideoGeneration(String streamId) {
-        // 这里应该调用实际的AI视频生成服务停止接口
-        log.info("停止AI视频生成进程: streamId={}", streamId);
+        log.info("停止AI视频生成: streamId={}", streamId);
+        
+        try {
+            AiVideoSession session = getSessionByStreamId(streamId);
+            if (session == null) {
+                log.warn("会话不存在，无法停止: streamId={}", streamId);
+                return;
+            }
+            
+            // 从生成信息中提取任务ID
+            String generationInfo = session.getGenerationInfo();
+            if (generationInfo != null && generationInfo.contains("AI Task ID: ")) {
+                String taskId = generationInfo.substring(generationInfo.indexOf("AI Task ID: ") + 12);
+                
+                // 调用AI客户端停止任务
+                aiVideoGenerationClient.stopGeneration(taskId)
+                        .subscribe(success -> {
+                            if (success) {
+                                log.info("AI生成任务停止成功: streamId={}, taskId={}", streamId, taskId);
+                            } else {
+                                log.warn("AI生成任务停止失败: streamId={}, taskId={}", streamId, taskId);
+                            }
+                        }, error -> {
+                            log.error("停止AI生成任务出错: streamId={}, taskId={}", streamId, taskId, error);
+                        });
+            }
+            
+            // 更新会话状态
+            updateSessionStatus(streamId, "STOPPED", null, "用户停止");
+            
+        } catch (Exception e) {
+            log.error("停止AI视频生成失败: streamId={}", streamId, e);
+            updateSessionStatus(streamId, "FAILED", null, "停止失败: " + e.getMessage());
+        }
     }
     
     /**
@@ -275,15 +359,6 @@ public class AiVideoServiceImpl implements AiVideoService {
             }
             aiVideoSessionMapper.updateById(session);
         }
-    }
-    
-    /**
-     * 根据流ID获取会话
-     */
-    private AiVideoSession getSessionByStreamId(String streamId) {
-        QueryWrapper<AiVideoSession> queryWrapper = new QueryWrapper<>();
-        queryWrapper.eq("stream_id", streamId);
-        return aiVideoSessionMapper.selectOne(queryWrapper);
     }
     
     /**

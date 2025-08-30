@@ -67,4 +67,20 @@ public interface AiVideoService {
      * @return 历史记录
      */
     List<AiVideoSession> getGenerationHistory(Long roomId, Integer limit);
+    
+    /**
+     * 获取活跃的AI视频会话列表
+     * 
+     * @param limit 限制数量
+     * @return 活跃会话列表
+     */
+    List<AiVideoSession> getActiveSessions(Integer limit);
+    
+    /**
+     * 根据流ID获取会话
+     * 
+     * @param streamId 流ID
+     * @return AI视频会话
+     */
+    AiVideoSession getSessionByStreamId(String streamId);
 }

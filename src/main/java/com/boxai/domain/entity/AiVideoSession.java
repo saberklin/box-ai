@@ -18,6 +18,10 @@ import java.time.LocalDateTime;
 @Schema(description = "AI视频生成会话")
 public class AiVideoSession extends BaseEntity {
     
+    @TableId(type = IdType.ASSIGN_ID)
+    @Schema(description = "主键ID")
+    private Long id;
+    
     @Schema(description = "包间ID")
     private Long roomId;
     

@@ -39,6 +39,9 @@ app:
     secret: bb1cc9e976d796a10416ad89053f7011
   jwt:
     secret: change-me-please
+  ai:
+    # AI服务提供商: mock, runway, stability
+    provider: mock
 
 logging:
   level:
