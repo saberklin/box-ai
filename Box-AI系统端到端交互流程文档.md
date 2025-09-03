@@ -1,4 +1,10 @@
-# 🎬 Box-AI KTV系统 - 完整端到端交互流程文档
+# 交接文档 
+
+1.包厢项目位置  D:\codeDemo\box-ai
+
+2.桌面端项目 D:\codeDemo\box-ai\fx-box
+
+3.nft项目D:\codeDemo\Nft
 
 ## 📋 目录
 1. [系统架构总览](#系统架构总览)
