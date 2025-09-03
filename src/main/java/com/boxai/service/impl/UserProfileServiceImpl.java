@@ -19,9 +19,8 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 用户画像服务实现
@@ -156,9 +155,60 @@ public class UserProfileServiceImpl extends ServiceImpl<UserProfileMapper, UserP
     }
     
     private Integer calculateAvgSessionDuration(Long userId) {
-        // 简化实现：返回默认值30分钟
-        // 实际应该根据会话ID分组计算每个会话的时长
-        return 30;
+        try {
+            // 获取用户的所有行为记录，按会话ID分组
+            List<UserBehavior> behaviors = userBehaviorService.list(
+                new LambdaQueryWrapper<UserBehavior>()
+                    .eq(UserBehavior::getUserId, userId)
+                    .isNotNull(UserBehavior::getSessionId)
+                    .orderByAsc(UserBehavior::getCreatedAt)
+            );
+            
+            if (behaviors.isEmpty()) {
+                return 0;
+            }
+            
+            // 按会话ID分组
+            Map<String, List<UserBehavior>> sessionGroups = behaviors.stream()
+                .collect(Collectors.groupingBy(UserBehavior::getSessionId));
+            
+            List<Integer> sessionDurations = new ArrayList<>();
+            
+            for (Map.Entry<String, List<UserBehavior>> entry : sessionGroups.entrySet()) {
+                List<UserBehavior> sessionBehaviors = entry.getValue();
+                if (sessionBehaviors.size() < 2) {
+                    continue; // 单个行为无法计算会话时长
+                }
+                
+                // 获取会话的开始和结束时间
+                OffsetDateTime startTime = sessionBehaviors.get(0).getCreatedAt();
+                OffsetDateTime endTime = sessionBehaviors.get(sessionBehaviors.size() - 1).getCreatedAt();
+                
+                // 计算会话时长（分钟）
+                long durationMinutes = java.time.Duration.between(startTime, endTime).toMinutes();
+                
+                // 过滤异常长的会话（超过4小时的可能是异常数据）
+                if (durationMinutes > 0 && durationMinutes <= 240) {
+                    sessionDurations.add((int) durationMinutes);
+                }
+            }
+            
+            if (sessionDurations.isEmpty()) {
+                return 30; // 默认30分钟
+            }
+            
+            // 计算平均会话时长
+            double avgDuration = sessionDurations.stream()
+                .mapToInt(Integer::intValue)
+                .average()
+                .orElse(30.0);
+            
+            return (int) Math.round(avgDuration);
+            
+        } catch (Exception e) {
+            log.error("计算平均会话时长失败: userId=" + userId, e);
+            return 30; // 出错时返回默认值
+        }
     }
     
     private String calculateActivityLevel(Integer totalPlays, Integer activeDays) {

@@ -70,12 +70,20 @@ public class MediaSyncServiceImpl implements MediaSyncService {
         mediaSyncLogMapper.insert(syncLog);
         
         try {
-            // 这里应该实现实际的文件下载逻辑
-            // 从云端下载媒体文件到本地
+            // 实现实际的文件下载逻辑
             String localPath = LOCAL_MEDIA_PATH + trackId + ".mp4";
             
-            // 模拟下载过程（实际应该从云端下载）
-            // downloadFromCloud(track.getCoverUrl(), localPath);
+            // 确保本地目录存在
+            Path mediaDir = Paths.get(LOCAL_MEDIA_PATH);
+            if (!Files.exists(mediaDir)) {
+                Files.createDirectories(mediaDir);
+            }
+            
+            // 从云端下载媒体文件
+            boolean downloadSuccess = downloadFromCloud(track, localPath);
+            if (!downloadSuccess) {
+                throw new RuntimeException("文件下载失败");
+            }
             
             // 更新歌曲的本地文件信息
             track.setLocalFilePath(localPath);
@@ -248,5 +256,64 @@ public class MediaSyncServiceImpl implements MediaSyncService {
         
         log.info("清理完成，删除文件数量: {}", cleanedCount);
         return cleanedCount;
+    }
+    
+    /**
+     * 从云端下载媒体文件到本地
+     */
+    private boolean downloadFromCloud(Track track, String localPath) {
+        try {
+            // 使用预览URL作为下载源（实际部署时应该有专门的媒体文件URL字段）
+            String cloudUrl = track.getPreviewUrl();
+            if (cloudUrl == null || cloudUrl.isEmpty()) {
+                cloudUrl = track.getCoverUrl(); // 备用方案
+            }
+            
+            if (cloudUrl == null || cloudUrl.isEmpty()) {
+                log.warn("歌曲没有可下载的媒体文件URL: trackId={}", track.getId());
+                return false;
+            }
+            
+            log.info("开始下载媒体文件: trackId={}, cloudUrl={}, localPath={}", 
+                    track.getId(), cloudUrl, localPath);
+            
+            // 使用Java的HTTP客户端下载文件
+            try (var inputStream = new java.net.URL(cloudUrl).openStream();
+                 var outputStream = Files.newOutputStream(Paths.get(localPath))) {
+                
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                long totalBytes = 0;
+                
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, bytesRead);
+                    totalBytes += bytesRead;
+                }
+                
+                // 更新文件大小信息
+                track.setFileSize(totalBytes);
+                
+                log.info("媒体文件下载完成: trackId={}, size={} bytes", track.getId(), totalBytes);
+                return true;
+                
+            } catch (Exception e) {
+                log.error("下载媒体文件失败: trackId={}, url={}", track.getId(), cloudUrl, e);
+                
+                // 清理可能的不完整文件
+                Path localFile = Paths.get(localPath);
+                if (Files.exists(localFile)) {
+                    try {
+                        Files.delete(localFile);
+                    } catch (IOException deleteEx) {
+                        log.warn("清理不完整文件失败: {}", localPath, deleteEx);
+                    }
+                }
+                return false;
+            }
+            
+        } catch (Exception e) {
+            log.error("下载媒体文件异常: trackId={}", track.getId(), e);
+            return false;
+        }
     }
 }
